@@ -1,0 +1,75 @@
+/* src/app/components/Footer.module.css */
+.footer {
+  width: 100%;
+  padding: 20px 0;
+  margin-top: 40px; /* Espaço entre o conteúdo da página e o rodapé */
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.copyright {
+  font-size: 14px;
+  color: var(--text-light);
+}
+
+.footerLinks {
+  display: flex;
+  gap: 25px;
+}
+
+/* Links padrão (se ainda usar <Link href> em algum lugar) */
+.footerLinks a {
+  font-size: 14px;
+  color: var(--text-light);
+  text-decoration: none;
+  transition: color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+  border-bottom: 1px solid transparent;
+}
+.footerLinks a:hover {
+  color: var(--text-dark);
+  text-decoration: none;
+  border-bottom-color: currentColor;
+}
+
+/* Botão estilizado como link (para abrir o modal de Privacidade) */
+.linkButton {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-light);
+  cursor: pointer;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+}
+.linkButton:hover {
+  color: var(--text-dark);
+  border-bottom-color: currentColor;
+}
+
+/* Acessibilidade: foco visível ao navegar por teclado */
+.linkButton:focus-visible,
+.footerLinks a:focus-visible {
+  outline: 2px solid var(--accent, #4D308C);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Responsivo: empilhar no mobile se faltar espaço */
+@media (max-width: 560px) {
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .footerLinks {
+    gap: 16px;
+  }
+}

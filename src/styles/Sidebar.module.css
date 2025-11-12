@@ -1,0 +1,186 @@
+/* src/app/components/Sidebar.module.css */
+.sidebar {
+  width: 260px; /* Um pouco mais largo para conforto */
+  height: 100vh;
+  padding: 25px;
+  background-color: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-color);
+  box-shadow: 0px 0px 4px var(--shadow-color);
+  border-radius: 0 20px 20px 0; /* Apenas na direita para um visual moderno */
+  position: sticky;
+  top: 0;
+}
+
+.logoContainer {
+  display: flex;
+  justify-content: center; /* Centraliza o item horizontalmente */
+  align-items: center;    /* Centraliza o item verticalmente */
+  width: 100%;            /* Garante que o container ocupe todo o espaço */
+  padding: 25px 0;        /* Adiciona um espaçamento vertical */
+  margin-bottom: 20px;
+}
+
+.logoContainer h1 {
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.nav ul {
+  list-style: none;
+}
+
+.nav li {
+  margin-bottom: 8px;
+}
+
+.nav a, .menuHeader, .parentMenu span {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  border-radius: 8px;
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-light);
+  transition: background-color 0.2s, color 0.2s;
+  cursor: pointer;
+}
+
+.nav a:hover, .menuHeader:hover, .parentMenu span:hover {
+  background-color: #f8f9fa;
+  color: var(--text-dark);
+}
+
+.chevron {
+    margin-left: auto; /* Empurra a seta para a direita */
+}
+
+/* Estilo para o item ATIVO */
+.active > a, .active > .menuHeader {
+  background-color: var(--primary-color);
+  color: var(--text-on-primary);
+}
+
+.active svg {
+   color: var(--text-on-primary);
+}
+
+.pagesMenu.active .menuHeader svg {
+   color: var(--text-on-primary);
+}
+.parentMenu span {
+    width: 100%;
+}
+
+/* Sub-menu */
+.subMenu {
+  margin-top: 8px;
+  padding-left: 20px;
+}
+
+.subMenu li {
+  margin-bottom: 4px;
+}
+
+.subMenu li a {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-light);
+  padding: 8px 15px;
+}
+.subMenuItem, .subMenuItemActive {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0px 15px 0px 25px;
+    color: var(--text-light);
+}
+/* Garanta que o estilo base do submenu esteja assim */
+.subMenuItem a, .subMenuItemActive a {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-light); /* Cor padrão para itens não ativos */
+  padding: 8px 15px;
+  display: block;
+  border-radius: 6px;
+  transition: all 0.2s ease-in-out;
+}
+
+/* Adicione um efeito hover para todos os sub-itens */
+.subMenuItem a:hover {
+  background-color: #f5f5f5;
+  color: var(--text-dark);
+}
+
+/* ESTA É A MUDANÇA PRINCIPAL */
+/* Estilo para o sub-item ATIVO */
+/* Estilo para o sub-item ATIVO */
+.subMenuItemActive a {
+  color: var(--accent-blue-color);
+  font-weight: 600;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* NOVA REGRA: Garante que o sub-item ATIVO permaneça ativo durante o hover */
+.subMenuItemActive:hover a {
+  color: var(--accent-blue-color);
+  background-color: rgba(59, 130, 246, 0.1);
+}
+.subMenuItemActive svg {
+    color: var(--text-on-primary);
+}
+
+/* Adicione estas classes ao final de Sidebar.module.css */
+
+.activeParent > .menuHeader {
+  background-color: var(--primary-color);
+  color: var(--text-on-primary);
+}
+
+.activeParent:hover > .menuHeader {
+  background-color: var(--primary-color); /* Mantém o Laranja */
+  color: var(--text-on-primary);      /* Mantém o texto Branco */
+}
+
+.activeParent > .menuHeader svg {
+  color: var(--text-on-primary);
+}
+
+.subMenu {
+  margin-top: 4px;
+  padding-left: 20px;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Animação simples de fade-in */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Em src/app/components/Sidebar.module.css, modifique o .menuHeader */
+.menuHeader {
+  display: flex; /* Adicione/garanta esta linha */
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  border-radius: 8px;
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-light);
+  transition: background-color 0.2s, color 0.2s;
+  cursor: pointer;
+  width: 100%; /* Garante que ocupe todo o espaço */
+}

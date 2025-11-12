@@ -1,0 +1,138 @@
+/* src/styles/privacy.module.css */
+
+/* Overlay com blur + fallbacks */
+.overlay{
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 0, 0, 0);
+  /* Safari/WebKit */
+  -webkit-backdrop-filter: blur(2px);
+  /* Demais navegadores */
+  backdrop-filter: blur(2px);
+  z-index: 1000;
+  animation: fadeIn .18s ease-out;
+  padding: 24px;
+}
+
+/* Fallback quando NÃO houver suporte a backdrop-filter */
+@supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
+  .overlay{
+    /* aumenta a opacidade para compensar ausência do blur */
+    background: rgba(0,0,0,.55);
+  }
+}
+
+/* Acessibilidade: reduzir transparência se usuário preferir */
+@media (prefers-reduced-transparency: reduce) {
+  .overlay{
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(0,0,0,.65);
+  }
+}
+
+/* Card modal */
+.card{
+  width: min(820px, 100%);
+  max-height: min(80vh, 900px);
+  background: var(--card-bg);
+  color: var(--text);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transform: translateY(6px);
+  animation: popIn .18s ease-out forwards;
+
+  /* Para rolar apenas o conteúdo */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Cabeçalho fixo dentro do card */
+.header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255, 0, 0, 0.06);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.459), transparent);
+  flex: 0 0 auto; /* não cresce */
+}
+
+.header h2{
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+}
+
+/* Botão fechar */
+.close{
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 4px 8px;
+}
+.close:hover{ background: rgba(0,0,0,.06); color: var(--text); }
+.close:focus-visible{
+  outline: 2px solid var(--accent, #4D308C);
+  outline-offset: 2px;
+}
+
+/* Conteúdo rolável */
+.content{
+  padding: 18px 20px 22px;
+  overflow: auto;
+  flex: 1 1 auto;            /* ocupa o restante do card */
+  min-height: 0;             /* necessário para rolar dentro de flex (Firefox) */
+  -webkit-overflow-scrolling: touch;  /* rolagem suave iOS */
+  overscroll-behavior: contain;       /* evita puxar a página por trás */
+  touch-action: pan-y;                /* gesto vertical garantido */
+}
+
+.kicker{
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 700;
+  font-size: .75rem;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+
+.content h3{
+  margin: 18px 0 8px;
+  font-size: 1rem;
+}
+
+.content p{
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 8px 0;
+}
+
+.content a{
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.0);
+}
+.content a:hover{ border-bottom-color: currentColor; }
+
+/* Animações */
+@keyframes fadeIn { from{ opacity: 0 } to{ opacity: 1 } }
+@keyframes popIn { to{ transform: translateY(0) } }
+
+/* Responsivo */
+@media (max-width: 640px){
+  .card{
+    border-radius: 14px;
+    max-height: 90vh; /* mais espaço útil no mobile */
+  }
+  .header{ padding: 14px 16px; }
+  .content{ padding: 16px; }
+}
