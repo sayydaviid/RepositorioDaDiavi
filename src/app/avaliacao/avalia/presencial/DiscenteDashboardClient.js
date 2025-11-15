@@ -8,6 +8,20 @@ import BoxplotChart from '../components/BoxplotChart';
 import styles from '../../../../styles/dados.module.css';
 import { Users, TrendingUp, TrendingDown } from 'lucide-react';
 
+/* =======================================================
+   >>>>>>>>>>>> CONFIG DE BASE DA API <<<<<<<<<<<<
+   - Produção (Vercel): defina NEXT_PUBLIC_API_BASE, ex.:
+     NEXT_PUBLIC_API_BASE=https://sayydaviid-avalia-backend.hf.space
+   - Dev/Proxy: crie um rewrite em /backend → http://localhost:8000
+   ======================================================= */
+const API_BASE =
+  (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE) || '';
+
+const make = (path) => (API_BASE ? `${API_BASE}${path}` : `/backend${path}`);
+
+// (opcional) Se quiser “desvetorizar” respostas R facilmente:
+// const unwrap = <T,>(v: T | T[]) => (Array.isArray(v) ? v[0] : v);
+
 // =======================================================
 // >>>>>>>>>>>> COMPONENTE DE CARREGAMENTO <<<<<<<<<<<<
 // =======================================================
@@ -375,11 +389,11 @@ export default function DiscenteDashboardClient({
       try {
         const params = new URLSearchParams(selectedFilters).toString();
         const urls = {
-          summary: `http://localhost:8000/discente/geral/summary?${params}`,
-          medias: `http://localhost:8000/discente/dimensoes/medias?${params}`,
-          proporcoes: `http://localhost:8000/discente/dimensoes/proporcoes?${params}`,
-          boxplot: `http://localhost:8000/discente/dimensoes/boxplot?${params}`,
-          atividades: `http://localhost:8000/discente/atividades/percentual?${params}`,
+          summary: make(`/discente/geral/summary?${params}`),
+          medias: make(`/discente/dimensoes/medias?${params}`),
+          proporcoes: make(`/discente/dimensoes/proporcoes?${params}`),
+          boxplot: make(`/discente/dimensoes/boxplot?${params}`),
+          atividades: make(`/discente/atividades/percentual?${params}`),
         };
         const responses = await Promise.all(
           Object.values(urls).map((url) => fetch(url))
@@ -412,54 +426,54 @@ export default function DiscenteDashboardClient({
     const params = new URLSearchParams(selectedFilters).toString();
     const endpointMap = {
       autoavaliacao: {
-        propItens: `http://localhost:8000/discente/autoavaliacao/itens/proporcoes?${params}`,
-        medItens: `http://localhost:8000/discente/autoavaliacao/itens/medias?${params}`,
-        boxItens: `http://localhost:8000/discente/autoavaliacao/itens/boxplot?${params}`,
+        propItens: make(`/discente/autoavaliacao/itens/proporcoes?${params}`),
+        medItens: make(`/discente/autoavaliacao/itens/medias?${params}`),
+        boxItens: make(`/discente/autoavaliacao/itens/boxplot?${params}`),
       },
       autoavaliacao_docente: {
-        propSub: `http://localhost:8000/docente/autoavaliacao/subdimensoes/proporcoes?${params}`,
-        medSub: `http://localhost:8000/docente/autoavaliacao/subdimensoes/medias?${params}`,
-        boxSub: `http://localhost:8000/docente/autoavaliacao/subdimensoes/boxplot?${params}`,
+        propSub: make(`/docente/autoavaliacao/subdimensoes/proporcoes?${params}`),
+        medSub: make(`/docente/autoavaliacao/subdimensoes/medias?${params}`),
+        boxSub: make(`/docente/autoavaliacao/subdimensoes/boxplot?${params}`),
       },
       atitude: {
-        discProp: `http://localhost:8000/discente/atitudeprofissional/itens/proporcoes?${params}`,
-        discMed: `http://localhost:8000/discente/atitudeprofissional/itens/medias?${params}`,
-        discBox: `http://localhost:8000/discente/atitudeprofissional/itens/boxplot?${params}`,
-        docProp: `http://localhost:8000/docente/atitudeprofissional/itens/proporcoes?${params}`,
-        docMed: `http://localhost:8000/docente/atitudeprofissional/itens/medias?${params}`,
-        docBox: `http://localhost:8000/docente/atitudeprofissional/itens/boxplot?${params}`,
+        discProp: make(`/discente/atitudeprofissional/itens/proporcoes?${params}`),
+        discMed: make(`/discente/atitudeprofissional/itens/medias?${params}`),
+        discBox: make(`/discente/atitudeprofissional/itens/boxplot?${params}`),
+        docProp: make(`/docente/atitudeprofissional/itens/proporcoes?${params}`),
+        docMed: make(`/docente/atitudeprofissional/itens/medias?${params}`),
+        docBox: make(`/docente/atitudeprofissional/itens/boxplot?${params}`),
       },
       gestao: {
-        discMed: `http://localhost:8000/discente/gestaodidatica/itens/medias?${params}`,
-        discProp: `http://localhost:8000/discente/gestaodidatica/itens/proporcoes?${params}`,
-        docMed: `http://localhost:8000/docente/gestaodidatica/itens/medias?${params}`,
-        docProp: `http://localhost:8000/docente/gestaodidatica/itens/proporcoes?${params}`,
-        discBox: `http://localhost:8000/discente/gestaodidatica/itens/boxplot?${params}`,
+        discMed: make(`/discente/gestaodidatica/itens/medias?${params}`),
+        discProp: make(`/discente/gestaodidatica/itens/proporcoes?${params}`),
+        docMed: make(`/docente/gestaodidatica/itens/medias?${params}`),
+        docProp: make(`/docente/gestaodidatica/itens/proporcoes?${params}`),
+        discBox: make(`/discente/gestaodidatica/itens/boxplot?${params}`),
       },
       processo: {
-        discMed: `http://localhost:8000/discente/processoavaliativo/itens/medias?${params}`,
-        discProp: `http://localhost:8000/discente/processoavaliativo/itens/proporcoes?${params}`,
-        discBox: `http://localhost:8000/discente/processoavaliativo/itens/boxplot?${params}`,
-        docMed: `http://localhost:8000/docente/processoavaliativo/itens/medias?${params}`,
-        docProp: `http://localhost:8000/docente/processoavaliativo/itens/proporcoes?${params}`,
+        discMed: make(`/discente/processoavaliativo/itens/medias?${params}`),
+        discProp: make(`/discente/processoavaliativo/itens/proporcoes?${params}`),
+        discBox: make(`/discente/processoavaliativo/itens/boxplot?${params}`),
+        docMed: make(`/docente/processoavaliativo/itens/medias?${params}`),
+        docProp: make(`/docente/processoavaliativo/itens/proporcoes?${params}`),
       },
       instalacoes: {
-        medItens: `http://localhost:8000/discente/instalacoes/itens/medias?${params}`,
-        propItens: `http://localhost:8000/discente/instalacoes/itens/proporcoes?${params}`,
-        boxDisc: `http://localhost:8000/discente/instalacoes/itens/boxplot?${params}`,
-        medDoc: `http://localhost:8000/docente/instalacoes/itens/medias?${params}`,
-        propDoc: `http://localhost:8000/docente/instalacoes/itens/proporcoes?${params}`,
+        medItens: make(`/discente/instalacoes/itens/medias?${params}`),
+        propItens: make(`/discente/instalacoes/itens/proporcoes?${params}`),
+        boxDisc: make(`/discente/instalacoes/itens/boxplot?${params}`),
+        medDoc: make(`/docente/instalacoes/itens/medias?${params}`),
+        propDoc: make(`/docente/instalacoes/itens/proporcoes?${params}`),
       },
       atividades: {
-        doc: `http://localhost:8000/docente/atividades/percentual?${params}`,
+        doc: make(`/docente/atividades/percentual?${params}`),
       },
       base_docente: {
-        turmaMed: `http://localhost:8000/docente/avaliacaoturma/itens/medias?${params}`,
-        turmaProp: `http://localhost:8000/docente/avaliacaoturma/itens/proporcoes?${params}`,
-        subMed: `http://localhost:8000/docente_base/autoavaliacao/subdimensoes/medias?${params}`,
-        subProp: `http://localhost:8000/docente_base/autoavaliacao/subdimensoes/proporcoes?${params}`,
-        dimMed: `http://localhost:8000/docente/dimensoes/medias?${params}`,
-        dimProp: `http://localhost:8000/docente/dimensoes/proporcoes?${params}`,
+        turmaMed: make(`/docente/avaliacaoturma/itens/medias?${params}`),
+        turmaProp: make(`/docente/avaliacaoturma/itens/proporcoes?${params}`),
+        subMed: make(`/docente_base/autoavaliacao/subdimensoes/medias?${params}`),
+        subProp: make(`/docente_base/autoavaliacao/subdimensoes/proporcoes?${params}`),
+        dimMed: make(`/docente/dimensoes/medias?${params}`),
+        dimProp: make(`/docente/dimensoes/proporcoes?${params}`),
       },
     };
 

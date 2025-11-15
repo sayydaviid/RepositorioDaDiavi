@@ -12,6 +12,16 @@ library(dplyr)
 library(jsonlite)
 library(tidyr)
 
+# Porta/host para PaaS
+PORT <- as.integer(Sys.getenv("PORT", "8000"))
+HOST <- "0.0.0.0"
+
+# (opcional) garantir working dir para o source("R/main.R")
+suppressWarnings({
+  f <- tryCatch(normalizePath(sys.frames()[[1]]$ofile), error = function(e) NULL)
+  if (!is.null(f)) setwd(dirname(f))
+})
+
 # Carrega configs e utilitários (deve definir load_data, filter_data, etc.)
 source("R/main.R")
 
@@ -1376,5 +1386,5 @@ pr <- pr_get(
 
 
 # --- 6. Iniciar o Servidor ---
-pr_run(pr, host = "0.0.0.0", port = 8000)
+pr$run(host = HOST, port = PORT)
 # nolint end
