@@ -27,12 +27,17 @@ source("R/main.R")
 
 # --- 1.1 Helpers ---
 normalize_param <- function(x) {
-  if (is.null(x)) return("all") # nolint
-  x_chr <- tolower(trimws(as.character(x)))
-  if (x_chr %in% c("", "all", "todos", "todas", "todo", "qualquer", "none", "null", "undefined")) {
+  if (is.null(x)) return("all")
+  
+  # REMOVIDO: tolower() para preservar Maiúsculas/Acentos vindos do Front
+  x_chr <- trimws(as.character(x))
+  
+  # Verifica se é uma string "vazia" ou indicativa de "todos"
+  if (tolower(x_chr) %in% c("", "all", "todos", "todas", "todo", "qualquer", "none", "null", "undefined")) {
     return("all")
   }
-  return(x)
+  
+  return(x_chr)
 }
 
 # segurança p/ mapeamento de subdimensões docente
