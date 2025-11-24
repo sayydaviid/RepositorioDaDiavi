@@ -19,16 +19,20 @@ const API_BASE =
 
 const make = (path) => (API_BASE ? `${API_BASE}${path}` : `/backend${path}`);
 
-// (opcional) Se quiser “desvetorizar” respostas R facilmente:
-// const unwrap = <T,>(v: T | T[]) => (Array.isArray(v) ? v[0] : v);
-
 // =======================================================
 // >>>>>>>>>>>> COMPONENTE DE CARREGAMENTO <<<<<<<<<<<<
 // =======================================================
 const LoadingOverlay = ({ isFullScreen = false }) => (
   <>
     <style jsx global>{`
-      @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
     `}</style>
     <div
       style={{
@@ -124,8 +128,8 @@ function formatItemCodeLabel(val) {
 function formatProporcoesChartData(apiData) {
   if (!apiData || apiData.length === 0)
     return { labels: [], datasets: [] };
-  const labels = [...new Set(apiData.map((item) => item.dimensao))].map(
-    (l) => wrapLabel(l)
+  const labels = [...new Set(apiData.map((item) => item.dimensao))].map((l) =>
+    wrapLabel(l)
   );
   const conceitos = ['Excelente', 'Bom', 'Regular', 'Insuficiente'];
   const colorMap = {
@@ -299,10 +303,7 @@ function normalizeAtitudeDocenteChartData(chartData) {
   };
 }
 
-export default function DiscenteDashboardClient({
-  initialData,
-  filtersOptions,
-}) {
+export default function DiscenteDashboardClient({ initialData, filtersOptions }) {
   const [activeTab, setActiveTab] = useState('dimensoes');
   const [selectedFilters, setSelectedFilters] = useState({
     campus: 'todos',
@@ -320,11 +321,13 @@ export default function DiscenteDashboardClient({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // loading da aba
-  const [isTabLoading, setIsTabLoading] = useState(false);
+  // controle de carregamento por aba
+  const [tabLoading, setTabLoading] = useState({});
 
   // cache de abas já carregadas
-  const [loadedTabs, setLoadedTabs] = useState({ dimensoes: true });
+  const [loadedTabs, setLoadedTabs] = useState({
+    dimensoes: true,
+  });
 
   // autoavaliação discente
   const [itensAutoProp, setItensAutoProp] = useState(null);
@@ -360,10 +363,8 @@ export default function DiscenteDashboardClient({
   const [itensInstalacoesMed, setItensInstalacoesMed] = useState(null);
   const [itensInstalacoesProp, setItensInstalacoesProp] = useState(null);
   const [itensInstalacoesMedDoc, setItensInstalacoesMedDoc] = useState(null);
-  const [itensInstalacoesPropDoc, setItensInstalacoesPropDoc] =
-    useState(null);
-  const [itensInstalacoesBoxDisc, setItensInstalacoesBoxDisc] =
-    useState(null);
+  const [itensInstalacoesPropDoc, setItensInstalacoesPropDoc] = useState(null);
+  const [itensInstalacoesBoxDisc, setItensInstalacoesBoxDisc] = useState(null);
 
   // Docente (subdimensões) + atividades
   const [docenteProp, setDocenteProp] = useState(null);
@@ -383,6 +384,9 @@ export default function DiscenteDashboardClient({
   // 1) Dados gerais (sempre que filtro muda)
   // =========================================================
   useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
     const fetchGeneralData = async () => {
       setIsLoading(true);
       setError(null);
@@ -396,33 +400,46 @@ export default function DiscenteDashboardClient({
           atividades: make(`/discente/atividades/percentual?${params}`),
         };
         const responses = await Promise.all(
-          Object.values(urls).map((url) => fetch(url))
+          Object.values(urls).map((url) =>
+            fetch(url, { signal: controller.signal })
+          )
         );
-        for (const res of responses)
-          if (!res.ok)
+        for (const res of responses) {
+          if (!res.ok) {
             throw new Error('Falha ao buscar dados filtrados da API R');
+          }
+        }
         const [summary, medias, proporcoes, boxplot, atividades] =
           await Promise.all(responses.map((res) => res.json()));
+        if (cancelled) return;
         setSummaryData(summary);
         setDashboardData({ medias, proporcoes, boxplot, atividades });
       } catch (err) {
-        setError(err.message);
+        if (cancelled || err.name === 'AbortError') return;
+        setError(err.message ?? 'Erro ao carregar dados gerais');
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
-    fetchGeneralData();
-  }, [selectedFilters]);
 
-  // sempre que filtros mudam, zera cache de abas
-  useEffect(() => {
-    setLoadedTabs({}); // força recarregar abas com filtros novos
+    fetchGeneralData();
+
+    // sempre que filtros mudam, zera cache de abas detalhadas
+    setLoadedTabs({ dimensoes: true });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [selectedFilters]);
 
   // =========================================================
   // 2) Dados detalhados por aba (carrega uma vez e guarda)
   // =========================================================
   useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
     const params = new URLSearchParams(selectedFilters).toString();
     const endpointMap = {
       autoavaliacao: {
@@ -431,15 +448,21 @@ export default function DiscenteDashboardClient({
         boxItens: make(`/discente/autoavaliacao/itens/boxplot?${params}`),
       },
       autoavaliacao_docente: {
-        propSub: make(`/docente/autoavaliacao/subdimensoes/proporcoes?${params}`),
+        propSub: make(
+          `/docente/autoavaliacao/subdimensoes/proporcoes?${params}`
+        ),
         medSub: make(`/docente/autoavaliacao/subdimensoes/medias?${params}`),
         boxSub: make(`/docente/autoavaliacao/subdimensoes/boxplot?${params}`),
       },
       atitude: {
-        discProp: make(`/discente/atitudeprofissional/itens/proporcoes?${params}`),
+        discProp: make(
+          `/discente/atitudeprofissional/itens/proporcoes?${params}`
+        ),
         discMed: make(`/discente/atitudeprofissional/itens/medias?${params}`),
         discBox: make(`/discente/atitudeprofissional/itens/boxplot?${params}`),
-        docProp: make(`/docente/atitudeprofissional/itens/proporcoes?${params}`),
+        docProp: make(
+          `/docente/atitudeprofissional/itens/proporcoes?${params}`
+        ),
         docMed: make(`/docente/atitudeprofissional/itens/medias?${params}`),
         docBox: make(`/docente/atitudeprofissional/itens/boxplot?${params}`),
       },
@@ -452,10 +475,14 @@ export default function DiscenteDashboardClient({
       },
       processo: {
         discMed: make(`/discente/processoavaliativo/itens/medias?${params}`),
-        discProp: make(`/discente/processoavaliativo/itens/proporcoes?${params}`),
+        discProp: make(
+          `/discente/processoavaliativo/itens/proporcoes?${params}`
+        ),
         discBox: make(`/discente/processoavaliativo/itens/boxplot?${params}`),
         docMed: make(`/docente/processoavaliativo/itens/medias?${params}`),
-        docProp: make(`/docente/processoavaliativo/itens/proporcoes?${params}`),
+        docProp: make(
+          `/docente/processoavaliativo/itens/proporcoes?${params}`
+        ),
       },
       instalacoes: {
         medItens: make(`/discente/instalacoes/itens/medias?${params}`),
@@ -470,8 +497,12 @@ export default function DiscenteDashboardClient({
       base_docente: {
         turmaMed: make(`/docente/avaliacaoturma/itens/medias?${params}`),
         turmaProp: make(`/docente/avaliacaoturma/itens/proporcoes?${params}`),
-        subMed: make(`/docente_base/autoavaliacao/subdimensoes/medias?${params}`),
-        subProp: make(`/docente_base/autoavaliacao/subdimensoes/proporcoes?${params}`),
+        subMed: make(
+          `/docente_base/autoavaliacao/subdimensoes/medias?${params}`
+        ),
+        subProp: make(
+          `/docente_base/autoavaliacao/subdimensoes/proporcoes?${params}`
+        ),
         dimMed: make(`/docente/dimensoes/medias?${params}`),
         dimProp: make(`/docente/dimensoes/proporcoes?${params}`),
       },
@@ -480,28 +511,33 @@ export default function DiscenteDashboardClient({
     const fetchDataForTab = async (tabKey) => {
       const urls = endpointMap[tabKey];
       if (!urls) return;
-
-      // se já carregou essa aba para esses filtros, não busca de novo
       if (loadedTabs[tabKey]) return;
+      if (cancelled) return;
 
-      setIsTabLoading(true);
+      setTabLoading((prev) => ({ ...prev, [tabKey]: true }));
       setError(null);
+
       try {
         if (tabKey === 'autoavaliacao') {
           const responses = await Promise.all(
-            Object.values(urls).map((url) => fetch(url))
+            Object.values(urls).map((url) =>
+              fetch(url, { signal: controller.signal })
+            )
           );
           for (const r of responses)
             if (!r.ok) throw new Error('Falha ao buscar dados detalhados');
           const [propI, medI, boxI] = await Promise.all(
             responses.map((r) => r.json())
           );
+          if (cancelled) return;
           setItensAutoProp(propI);
           setItensAutoMed(medI);
           setItensAutoBox(boxI);
         } else if (tabKey === 'autoavaliacao_docente') {
           const responses = await Promise.all(
-            Object.values(urls).map((url) => fetch(url))
+            Object.values(urls).map((url) =>
+              fetch(url, { signal: controller.signal })
+            )
           );
           for (const r of responses)
             if (!r.ok)
@@ -509,23 +545,25 @@ export default function DiscenteDashboardClient({
           const [propS, medS, boxS] = await Promise.all(
             responses.map((r) => r.json())
           );
+          if (cancelled) return;
           setDocenteProp(propS);
           setDocenteMed(medS);
           setDocenteBox(boxS);
         } else if (tabKey === 'atitude') {
           const responses = await Promise.all([
-            fetch(urls.discProp),
-            fetch(urls.discMed),
-            fetch(urls.docProp),
-            fetch(urls.docMed),
-            fetch(urls.docBox),
-            fetch(urls.discBox),
+            fetch(urls.discProp, { signal: controller.signal }),
+            fetch(urls.discMed, { signal: controller.signal }),
+            fetch(urls.docProp, { signal: controller.signal }),
+            fetch(urls.docMed, { signal: controller.signal }),
+            fetch(urls.docBox, { signal: controller.signal }),
+            fetch(urls.discBox, { signal: controller.signal }),
           ]);
           for (const r of responses)
             if (!r.ok)
               throw new Error('Falha ao buscar Atitude Profissional');
           const [dProp, dMed, dcProp, dcMed, dcBox, dBox] =
             await Promise.all(responses.map((r) => r.json()));
+          if (cancelled) return;
           setItensAtitudePropDisc(dProp);
           setItensAtitudeMedDisc(dMed);
           setItensAtitudeMed(dMed);
@@ -535,16 +573,17 @@ export default function DiscenteDashboardClient({
           setItensAtitudeBoxDisc(dBox);
         } else if (tabKey === 'gestao') {
           const responses = await Promise.all([
-            fetch(urls.discMed),
-            fetch(urls.discProp),
-            fetch(urls.docMed),
-            fetch(urls.docProp),
-            fetch(urls.discBox),
+            fetch(urls.discMed, { signal: controller.signal }),
+            fetch(urls.discProp, { signal: controller.signal }),
+            fetch(urls.docMed, { signal: controller.signal }),
+            fetch(urls.docProp, { signal: controller.signal }),
+            fetch(urls.discBox, { signal: controller.signal }),
           ]);
           for (const r of responses)
             if (!r.ok) throw new Error('Falha ao buscar Gestão Didática');
           const [discMed, discProp, docMed, docProp, discBox] =
             await Promise.all(responses.map((r) => r.json()));
+          if (cancelled) return;
           setItensGestaoMedDisc(discMed);
           setItensGestaoPropDisc(discProp);
           setItensGestaoMedDoc(docMed);
@@ -552,17 +591,18 @@ export default function DiscenteDashboardClient({
           setItensGestaoBoxDisc(discBox);
         } else if (tabKey === 'processo') {
           const responses = await Promise.all([
-            fetch(urls.discMed),
-            fetch(urls.discProp),
-            fetch(urls.discBox),
-            fetch(urls.docMed),
-            fetch(urls.docProp),
+            fetch(urls.discMed, { signal: controller.signal }),
+            fetch(urls.discProp, { signal: controller.signal }),
+            fetch(urls.discBox, { signal: controller.signal }),
+            fetch(urls.docMed, { signal: controller.signal }),
+            fetch(urls.docProp, { signal: controller.signal }),
           ]);
           for (const r of responses)
             if (!r.ok)
               throw new Error('Falha ao buscar Processo Avaliativo');
           const [discMed, discProp, discBox, docMed, docProp] =
             await Promise.all(responses.map((r) => r.json()));
+          if (cancelled) return;
           setProcDiscMed(discMed);
           setProcDiscProp(discProp);
           setProcDiscBox(discBox);
@@ -570,39 +610,43 @@ export default function DiscenteDashboardClient({
           setProcDocProp(docProp);
         } else if (tabKey === 'instalacoes') {
           const responses = await Promise.all([
-            fetch(urls.medItens),
-            fetch(urls.propItens),
-            fetch(urls.boxDisc),
-            fetch(urls.medDoc),
-            fetch(urls.propDoc),
+            fetch(urls.medItens, { signal: controller.signal }),
+            fetch(urls.propItens, { signal: controller.signal }),
+            fetch(urls.boxDisc, { signal: controller.signal }),
+            fetch(urls.medDoc, { signal: controller.signal }),
+            fetch(urls.propDoc, { signal: controller.signal }),
           ]);
           for (const r of responses)
             if (!r.ok) throw new Error('Falha ao buscar instalações');
           const [medI, propI, boxD, medDocI, propDocI] =
             await Promise.all(responses.map((r) => r.json()));
+          if (cancelled) return;
           setItensInstalacoesMed(medI);
           setItensInstalacoesProp(propI);
           setItensInstalacoesBoxDisc(boxD);
           setItensInstalacoesMedDoc(medDocI);
           setItensInstalacoesPropDoc(propDocI);
         } else if (tabKey === 'atividades') {
-          const r = await fetch(urls.doc);
+          const r = await fetch(urls.doc, { signal: controller.signal });
           if (!r.ok) throw new Error('Falha ao buscar atividades do docente');
-          setAtividadesDoc(await r.json());
+          const doc = await r.json();
+          if (cancelled) return;
+          setAtividadesDoc(doc);
         } else if (tabKey === 'base_docente') {
           const responses = await Promise.all([
-            fetch(urls.turmaMed),
-            fetch(urls.turmaProp),
-            fetch(urls.subMed),
-            fetch(urls.subProp),
-            fetch(urls.dimMed),
-            fetch(urls.dimProp),
+            fetch(urls.turmaMed, { signal: controller.signal }),
+            fetch(urls.turmaProp, { signal: controller.signal }),
+            fetch(urls.subMed, { signal: controller.signal }),
+            fetch(urls.subProp, { signal: controller.signal }),
+            fetch(urls.dimMed, { signal: controller.signal }),
+            fetch(urls.dimProp, { signal: controller.signal }),
           ]);
           for (const r of responses)
             if (!r.ok) throw new Error('Falha ao buscar Base Docente');
           const [tm, tp, sm, sp, dm, dp] = await Promise.all(
             responses.map((r) => r.json())
           );
+          if (cancelled) return;
           setDocTurmaMed(tm);
           setDocTurmaProp(tp);
           setDocSubMed(sm);
@@ -611,18 +655,27 @@ export default function DiscenteDashboardClient({
           setDocDimProp(dp);
         }
 
-        // marcou essa aba como carregada
-        setLoadedTabs((prev) => ({ ...prev, [tabKey]: true }));
+        if (!cancelled) {
+          setLoadedTabs((prev) => ({ ...prev, [tabKey]: true }));
+        }
       } catch (err) {
-        setError(err.message);
+        if (cancelled || err.name === 'AbortError') return;
+        setError(err.message ?? 'Erro ao carregar dados da aba');
       } finally {
-        setIsTabLoading(false);
+        if (!cancelled) {
+          setTabLoading((prev) => ({ ...prev, [tabKey]: false }));
+        }
       }
     };
 
     if (endpointMap[activeTab]) {
       fetchDataForTab(activeTab);
     }
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [activeTab, selectedFilters, loadedTabs]);
 
   const datasets = useMemo(
@@ -651,14 +704,19 @@ export default function DiscenteDashboardClient({
     { key: 'instalacoes', label: 'Instalações Físicas' },
   ];
 
+  // bloqueia a UI enquanto:
+  // - dados gerais estão carregando OU
+  // - a aba ativa ainda está carregando dados detalhados
+  const isBlockingLoading = isLoading || !!tabLoading[activeTab];
+
   return (
     <>
-      {(isLoading || isTabLoading) && <LoadingOverlay isFullScreen />}
+      {isBlockingLoading && <LoadingOverlay isFullScreen />}
 
       <div
         style={{
-          opacity: (isLoading || isTabLoading) ? 0.35 : 1,
-          pointerEvents: (isLoading || isTabLoading) ? 'none' : 'auto',
+          opacity: isBlockingLoading ? 0.35 : 1,
+          pointerEvents: isBlockingLoading ? 'none' : 'auto',
         }}
       >
         {error && <p className={styles.errorMessage}>{error}</p>}
@@ -819,7 +877,9 @@ export default function DiscenteDashboardClient({
                               docenteProp
                             )}
                             title="Proporções por Subdimensão — Autoavaliação Docente"
-                            customOptions={{ plugins: { tooltip: twoDecTooltip() } }}
+                            customOptions={{
+                              plugins: { tooltip: twoDecTooltip() },
+                            }}
                           />
                         ) : (
                           <p>Dados de proporções não disponíveis.</p>
@@ -866,38 +926,18 @@ export default function DiscenteDashboardClient({
                   </div>
                 )}
 
-              {activeTab === 'atividades' && (
-                <div style={{ position: 'relative' }}>
-                  <div
-                    className={styles.dashboardLayout}
-                    style={{ gridTemplateColumns: '1fr' }}
-                  >
-                    {/* Discente */}
-                    <div className={styles.chartContainerFlex}>
-                      <ActivityChart
-                        chartData={datasets.atividades}
-                        title="Percentual de Participação em Atividades (Discente)"
-                        customOptions={{
-                          plugins: { tooltip: twoDecTooltip('%') },
-                          scales: {
-                            x: {
-                              ticks: {
-                                maxRotation: 0,
-                                minRotation: 0,
-                                autoSkip: false,
-                              },
-                            },
-                          },
-                        }}
-                      />
-                    </div>
-
-                    {/* Docente */}
-                    <div className={styles.chartContainerFlex}>
-                      {atividadesDoc ? (
+                {/* ATIVIDADES */}
+                {activeTab === 'atividades' && (
+                  <div style={{ position: 'relative' }}>
+                    <div
+                      className={styles.dashboardLayout}
+                      style={{ gridTemplateColumns: '1fr' }}
+                    >
+                      {/* Discente */}
+                      <div className={styles.chartContainerFlex}>
                         <ActivityChart
-                          chartData={formatAtividadesChartData(atividadesDoc)}
-                          title="Percentual de Participação em Atividades (Docente)"
+                          chartData={datasets.atividades}
+                          title="Percentual de Participação em Atividades (Discente)"
                           customOptions={{
                             plugins: { tooltip: twoDecTooltip('%') },
                             scales: {
@@ -911,14 +951,34 @@ export default function DiscenteDashboardClient({
                             },
                           }}
                         />
-                      ) : (
-                        <p>Dados de atividades do docente não disponíveis.</p>
-                      )}
+                      </div>
+
+                      {/* Docente */}
+                      <div className={styles.chartContainerFlex}>
+                        {atividadesDoc ? (
+                          <ActivityChart
+                            chartData={formatAtividadesChartData(atividadesDoc)}
+                            title="Percentual de Participação em Atividades (Docente)"
+                            customOptions={{
+                              plugins: { tooltip: twoDecTooltip('%') },
+                              scales: {
+                                x: {
+                                  ticks: {
+                                    maxRotation: 0,
+                                    minRotation: 0,
+                                    autoSkip: false,
+                                  },
+                                },
+                              },
+                            }}
+                          />
+                        ) : (
+                          <p>Dados de atividades do docente não disponíveis.</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-
+                )}
 
                 {/* BASE DOCENTE */}
                 {activeTab === 'base_docente' && (
@@ -1440,7 +1500,9 @@ export default function DiscenteDashboardClient({
                             title="Boxplot — Distribuição das Médias por Item (Gestão Didática • Discente)"
                           />
                         ) : (
-                          <p>Boxplot — Gestão Didática (Discente) não disponível.</p>
+                          <p>
+                            Boxplot — Gestão Didática (Discente) não disponível.
+                          </p>
                         )}
                       </div>
                     </div>
@@ -1584,9 +1646,13 @@ export default function DiscenteDashboardClient({
                       <div className={styles.chartContainer}>
                         {itensInstalacoesProp ? (
                           <ActivityChart
-                            chartData={formatProporcoesItensChartData(itensInstalacoesProp)}
+                            chartData={formatProporcoesItensChartData(
+                              itensInstalacoesProp
+                            )}
                             title="Proporções — Itens de Instalações Físicas (Discente)"
-                            customOptions={{ plugins: { tooltip: twoDecTooltip('%') } }}
+                            customOptions={{
+                              plugins: { tooltip: twoDecTooltip('%') },
+                            }}
                           />
                         ) : (
                           <p>Dados não disponíveis.</p>
@@ -1597,9 +1663,13 @@ export default function DiscenteDashboardClient({
                       <div className={styles.chartContainer}>
                         {itensInstalacoesPropDoc ? (
                           <ActivityChart
-                            chartData={formatProporcoesItensChartData(itensInstalacoesPropDoc)}
+                            chartData={formatProporcoesItensChartData(
+                              itensInstalacoesPropDoc
+                            )}
                             title="Proporções — Itens de Instalações Físicas (Docente)"
-                            customOptions={{ plugins: { tooltip: twoDecTooltip('%') } }}
+                            customOptions={{
+                              plugins: { tooltip: twoDecTooltip('%') },
+                            }}
                           />
                         ) : (
                           <p>Proporções (Docente) não disponíveis.</p>
@@ -1610,14 +1680,17 @@ export default function DiscenteDashboardClient({
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+                          gridTemplateColumns:
+                            'repeat(auto-fit, minmax(360px, 1fr))',
                           gap: '1rem',
                         }}
                       >
                         <div className={styles.chartContainer}>
                           {itensInstalacoesMed ? (
                             <ActivityChart
-                              chartData={formatMediasItensChartData(itensInstalacoesMed)}
+                              chartData={formatMediasItensChartData(
+                                itensInstalacoesMed
+                              )}
                               title="Médias — Itens de Instalações Físicas (Discente)"
                               customOptions={{
                                 plugins: { legend: { display: false } },
@@ -1631,7 +1704,9 @@ export default function DiscenteDashboardClient({
                         <div className={styles.chartContainer}>
                           {itensInstalacoesMedDoc ? (
                             <ActivityChart
-                              chartData={formatMediasItensChartData(itensInstalacoesMedDoc)}
+                              chartData={formatMediasItensChartData(
+                                itensInstalacoesMedDoc
+                              )}
                               title="Médias — Itens de Instalações Físicas (Docente)"
                               customOptions={{
                                 plugins: { legend: { display: false } },
