@@ -20,19 +20,30 @@ export default function TecnicoPage() {
     dimensao: 'todas',
   });
 
+  /* =====================================================
+     Carregamento inicial
+  ===================================================== */
   useEffect(() => {
-    fetch('/api/tecnico') 
-      .then(res => res.ok ? res.json() : Promise.reject('Falha ao buscar dados'))
+    fetch('/api/tecnico')
+      .then(res => (res.ok ? res.json() : Promise.reject('Falha ao buscar dados')))
       .then(data => {
-        const tecnicoData = data[2]?.data || data; 
+        const tecnicoData = data[2]?.data || data;
         setAllData(tecnicoData);
         setFilteredData(tecnicoData);
       })
-      .catch(error => console.error("Não foi possível carregar os dados dos técnicos:", error));
+      .catch(error =>
+        console.error('Não foi possível carregar os dados dos técnicos:', error)
+      );
   }, []);
 
+  /* =====================================================
+     Aplicação dos filtros (lotacao/exercicio/cargo)
+     OBS: não filtramos por dimensão aqui, porque agora exibimos por dimensão em grid.
+     A seleção de dimensão será aplicada na construção dos gráficos (chartsByDimension).
+  ===================================================== */
   useEffect(() => {
     let data = [...allData];
+
     if (selectedFilters.lotacao !== 'todos') {
       data = data.filter(d => d.UND_LOTACAO_TECNICO === selectedFilters.lotacao);
     }
@@ -42,33 +53,50 @@ export default function TecnicoPage() {
     if (selectedFilters.cargo !== 'todos') {
       data = data.filter(d => d.CARGO_TECNICO === selectedFilters.cargo);
     }
-    if (selectedFilters.dimensao !== 'todas') {
-      const keys = dimensionMappingTecnico ? (dimensionMappingTecnico[selectedFilters.dimensao] || []) : [];
-      if (keys.length > 0) {
-        data = data.filter(r => keys.some(key => r[key] && r[key] !== '5'));
-      }
-    }
-    setFilteredData(data);
-  }, [selectedFilters, allData]);
 
-  // LÓGICA ATUALIZADA PARA RESETAR FILTROS DEPENDENTES
+    setFilteredData(data);
+  }, [
+    allData,
+    selectedFilters.lotacao,
+    selectedFilters.exercicio,
+    selectedFilters.cargo,
+  ]);
+
+  /* =====================================================
+     Handle filters (cascata + resets dependentes)
+  ===================================================== */
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    
+
     if (name === 'lotacao') {
-      setSelectedFilters(prev => ({ ...prev, lotacao: value, exercicio: 'todos', cargo: 'todos' }));
+      setSelectedFilters(prev => ({
+        ...prev,
+        lotacao: value,
+        exercicio: 'todos',
+        cargo: 'todos',
+      }));
     } else if (name === 'exercicio') {
-      setSelectedFilters(prev => ({ ...prev, exercicio: value, cargo: 'todos' }));
+      setSelectedFilters(prev => ({
+        ...prev,
+        exercicio: value,
+        cargo: 'todos',
+      }));
     } else if (name === 'dimensao') {
-      setSelectedFilters(prev => ({ ...prev, dimensao: value, pergunta: 'todas' }));
+      setSelectedFilters(prev => ({
+        ...prev,
+        dimensao: value,
+        pergunta: 'todas',
+      }));
     } else {
       setSelectedFilters(prev => ({ ...prev, [name]: value }));
     }
   };
 
-  // LÓGICA ATUALIZADA PARA FILTROS CASCATA
+  /* =====================================================
+     Opções dos filtros em cascata
+  ===================================================== */
   const filterOptions = useMemo(() => {
-    if (allData.length === 0) return { lotacoes: [], exercicios: [], cargos: [] };
+    if (!allData.length) return { lotacoes: [], exercicios: [], cargos: [] };
 
     let lotacaoData = allData;
     let exercicioData = allData;
@@ -83,14 +111,15 @@ export default function TecnicoPage() {
       lotacaoData = lotacaoData.filter(d => d.UND_EXERCICIO_TECNICO === selectedFilters.exercicio);
       cargoData = cargoData.filter(d => d.UND_EXERCICIO_TECNICO === selectedFilters.exercicio);
     }
-    
+
     if (selectedFilters.cargo !== 'todos') {
-        lotacaoData = lotacaoData.filter(d => d.CARGO_TECNICO === selectedFilters.cargo);
-        exercicioData = exercicioData.filter(d => d.CARGO_TECNICO === selectedFilters.cargo);
+      lotacaoData = lotacaoData.filter(d => d.CARGO_TECNICO === selectedFilters.cargo);
+      exercicioData = exercicioData.filter(d => d.CARGO_TECNICO === selectedFilters.cargo);
     }
 
-    const getUniqueSorted = (data, key) => [...new Set(data.map(d => d[key]))].filter(Boolean).sort();
-    
+    const getUniqueSorted = (data, key) =>
+      [...new Set(data.map(d => d[key]))].filter(Boolean).sort();
+
     return {
       lotacoes: getUniqueSorted(lotacaoData, 'UND_LOTACAO_TECNICO'),
       exercicios: getUniqueSorted(exercicioData, 'UND_EXERCICIO_TECNICO'),
@@ -98,53 +127,130 @@ export default function TecnicoPage() {
     };
   }, [allData, selectedFilters]);
 
-
+  /* =====================================================
+     Estatística: top lotação
+  ===================================================== */
   const topLotacao = useMemo(() => {
-    if (filteredData.length === 0) return 'N/A';
-    const counts = filteredData.reduce((acc, curr) => {
-      const lotacao = curr.UND_LOTACAO_TECNICO;
-      if (lotacao) acc[lotacao] = (acc[lotacao] || 0) + 1;
-      return acc;
-    }, {});
-    if (Object.keys(counts).length === 0) return 'N/A';
-    const topName = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
-    return `${topName} — ${counts[topName]}`;
+    if (!filteredData.length) return 'N/A';
+
+    const counts = new Map();
+    for (const row of filteredData) {
+      const lotacao = row.UND_LOTACAO_TECNICO || 'N/A';
+      counts.set(lotacao, (counts.get(lotacao) || 0) + 1);
+    }
+
+    let best = { name: 'N/A', count: 0 };
+    [...counts.entries()]
+      .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]), 'pt-BR'))
+      .forEach(([name, count], idx) => {
+        if (idx === 0) best = { name, count };
+      });
+
+    return `${best.name} — ${best.count.toLocaleString('pt-BR')}`;
   }, [filteredData]);
 
-  const questionChartData = useMemo(() => {
-    const getKeys = () => {
-      if (!questionMappingTecnico || !dimensionMappingTecnico) return [];
-      if (selectedFilters.pergunta !== 'todas') return [selectedFilters.pergunta];
-      if (selectedFilters.dimensao !== 'todas') return dimensionMappingTecnico[selectedFilters.dimensao] || [];
-      return Object.keys(questionMappingTecnico);
-    };
+  /* =====================================================
+     GRÁFICOS POR DIMENSÃO (2xN)
+     Regras:
+       - se pergunta != todas -> 1 gráfico (da pergunta)
+       - senão, se dimensao != todas -> 1 dimensão (com várias perguntas)
+       - senão -> todas as dimensões (grid 2xN)
+  ===================================================== */
+  const chartsByDimension = useMemo(() => {
+    if (!questionMappingTecnico || !dimensionMappingTecnico) return [];
 
-    const labels = getKeys();
-    const dataPoints = labels.map(key => {
-      const scores = filteredData.map(item => ratingToScore[item[key]]).filter(s => s != null);
-      if (scores.length === 0) return null;
-      return scores.reduce((a, b) => a + b, 0) / scores.length;
-    });
+    // Caso 1: pergunta específica
+    if (selectedFilters.pergunta !== 'todas') {
+      const key = selectedFilters.pergunta;
 
-    return { 
-      labels, 
-      datasets: [{ 
-        label: 'Média de Respostas', 
-        data: dataPoints, 
-        backgroundColor: 'rgba(255, 142, 41, 0.8)',
-        borderColor: 'rgba(255, 142, 41, 1)',
-        borderWidth: 1,
-      }] 
-    };
+      const scores = filteredData
+        .map(item => ratingToScore[item[key]])
+        .filter(v => v !== null && v !== undefined);
+
+      const avg = scores.length
+        ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))
+        : null;
+
+      return [
+        {
+          dimensionName: `Pergunta ${key}`,
+          chartData: {
+            labels: [key],
+            datasets: [
+              {
+                label: 'Média de Respostas',
+                data: [avg],
+                backgroundColor: 'rgba(255, 142, 41, 0.8)',
+                borderColor: 'rgba(255, 142, 41, 1)',
+                borderWidth: 1,
+              },
+            ],
+          },
+        },
+      ];
+    }
+
+    // Caso 2: 1 dimensão selecionada
+    const dimensionEntries =
+      selectedFilters.dimensao !== 'todas'
+        ? [[selectedFilters.dimensao, dimensionMappingTecnico[selectedFilters.dimensao] || []]]
+        : Object.entries(dimensionMappingTecnico);
+
+    // Caso 3: todas as dimensões
+    return dimensionEntries
+      .map(([dimensionName, questionKeys]) => {
+        const labels = questionKeys;
+
+        const dataPoints = questionKeys.map(key => {
+          const scores = filteredData
+            .map(item => ratingToScore[item[key]])
+            .filter(v => v !== null && v !== undefined);
+
+          if (!scores.length) return null;
+
+          const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          return Number(avg.toFixed(2));
+        });
+
+        return {
+          dimensionName,
+          chartData: {
+            labels,
+            datasets: [
+              {
+                label: 'Média de Respostas',
+                data: dataPoints,
+                backgroundColor: 'rgba(255, 142, 41, 0.8)',
+                borderColor: 'rgba(255, 142, 41, 1)',
+                borderWidth: 1,
+              },
+            ],
+          },
+        };
+      })
+      .filter(d => d.chartData.labels && d.chartData.labels.length > 0);
   }, [filteredData, selectedFilters.pergunta, selectedFilters.dimensao]);
 
   return (
     <div>
-      <Header title="Análise de Respostas dos Técnicos" subtitle="Dados referentes ao questionário de autoavaliação" />
+      <Header
+        title="Análise de Respostas dos Técnicos"
+        subtitle="Dados referentes ao questionário de autoavaliação"
+      />
+
       <div className={styles.statsGrid}>
-        <StatCard title="Total de Participantes" value={filteredData.length.toLocaleString('pt-BR')} icon={<Users />} />
-        <StatCard title="Lotação com Mais Participantes" value={topLotacao} icon={<Building />} />
+        <StatCard
+          title="Total de Participantes"
+          value={filteredData.length.toLocaleString('pt-BR')}
+          icon={<Users />}
+        />
+        <StatCard
+          title="Lotação com Mais Participantes"
+          value={topLotacao}
+          icon={<Building />}
+        />
       </div>
+
       <TecnicoFilters
         filters={filterOptions}
         selectedFilters={selectedFilters}
@@ -152,11 +258,18 @@ export default function TecnicoPage() {
         questionMap={questionMappingTecnico}
         dimensionMap={dimensionMappingTecnico}
       />
-      <QuestionChart
-        chartData={questionChartData}
-        title="Média de Respostas por Pergunta"
-        questionMap={questionMappingTecnico}
-      />
+
+      {/* GRID 2xN POR DIMENSÃO */}
+      <div className={styles.dimensionGrid}>
+        {chartsByDimension.map(({ dimensionName, chartData }) => (
+          <QuestionChart
+            key={dimensionName}
+            chartData={chartData}
+            title={String(dimensionName)}
+            questionMap={questionMappingTecnico}
+          />
+        ))}
+      </div>
     </div>
   );
 }

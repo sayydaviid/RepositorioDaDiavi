@@ -9,7 +9,6 @@ import { Users, Building2 } from 'lucide-react';
 import { questionMapping, ratingToScore } from '../lib/questionMapping';
 import { dimensionMapping } from '../lib/DimensionMappingDiscente';
 
-
 export default function DiscentePage() {
   const [allData, setAllData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
@@ -21,6 +20,9 @@ export default function DiscentePage() {
     dimensao: 'todas',
   });
 
+  /* =====================================================
+     Carregamento inicial
+  ===================================================== */
   useEffect(() => {
     fetch('/api/discente')
       .then(res => {
@@ -32,11 +34,17 @@ export default function DiscentePage() {
         setAllData(studentData);
         setFilteredData(studentData);
       })
-      .catch(error => console.error("Não foi possível carregar os dados:", error));
+      .catch(error =>
+        console.error('Não foi possível carregar os dados:', error)
+      );
   }, []);
 
+  /* =====================================================
+     Aplicação dos filtros
+  ===================================================== */
   useEffect(() => {
     let data = [...allData];
+
     if (selectedFilters.campus !== 'todos') {
       data = data.filter(d => d.CAMPUS_DISCENTE === selectedFilters.campus);
     }
@@ -46,30 +54,20 @@ export default function DiscentePage() {
     if (selectedFilters.curso !== 'todos') {
       data = data.filter(d => d.CURSO_DISCENTE === selectedFilters.curso);
     }
-    if (selectedFilters.dimensao !== 'todos') {
-      const questionKeysInDim = dimensionMapping ? dimensionMapping[selectedFilters.dimensao] : [];
-      if (questionKeysInDim && questionKeysInDim.length > 0) {
-        data = data.filter(respondente => {
-          return questionKeysInDim.some(key => respondente[key] && respondente[key] !== '5');
-        });
-      }
-    }
+
     setFilteredData(data);
   }, [selectedFilters, allData]);
 
-  // 1. LÓGICA DE FILTROS SIMPLIFICADA PARA NÃO RESETAR SELEÇÕES
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'dimensao') {
-      setSelectedFilters(prev => ({ ...prev, dimensao: value, pergunta: 'todas' }));
-    } else {
-      setSelectedFilters(prev => ({ ...prev, [name]: value }));
-    }
+    setSelectedFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  // 2. LÓGICA ATUALIZADA PARA FILTROS INTERDEPENDENTES (CASCATA)
+  /* =====================================================
+     Filtros em cascata
+  ===================================================== */
   const filterOptions = useMemo(() => {
-    if (allData.length === 0) return { campus: [], unidades: [], cursos: [] };
+    if (!allData.length) return { campus: [], unidades: [], cursos: [] };
 
     let campusData = allData;
     let unidadeData = allData;
@@ -88,76 +86,85 @@ export default function DiscentePage() {
       unidadeData = unidadeData.filter(d => d.CURSO_DISCENTE === selectedFilters.curso);
     }
 
-    const getUniqueSorted = (data, key) => [...new Set(data.map(d => d[key]))].filter(Boolean).sort();
+    const uniq = (data, key) =>
+      [...new Set(data.map(d => d[key]))].filter(Boolean).sort();
 
     return {
-      campus: getUniqueSorted(campusData, 'CAMPUS_DISCENTE'),
-      unidades: getUniqueSorted(unidadeData, 'UNIDADE_DISCENTE'),
-      cursos: getUniqueSorted(cursoData, 'CURSO_DISCENTE'),
+      campus: uniq(campusData, 'CAMPUS_DISCENTE'),
+      unidades: uniq(unidadeData, 'UNIDADE_DISCENTE'),
+      cursos: uniq(cursoData, 'CURSO_DISCENTE'),
     };
   }, [allData, selectedFilters]);
 
+  /* =====================================================
+     Estatística auxiliar
+  ===================================================== */
   const topUnit = useMemo(() => {
     if (!filteredData.length) return { name: '-', count: 0 };
+
     const counts = new Map();
-    for (const row of filteredData) {
+    filteredData.forEach(row => {
       const name = row.UNIDADE_DISCENTE || 'Sem unidade';
       counts.set(name, (counts.get(name) || 0) + 1);
-    }
-    let best = { name: '-', count: 0 };
-    [...counts.entries()]
-      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0], 'pt-BR'))
-      .forEach(([name, count], idx) => {
-        if (idx === 0) best = { name, count };
-      });
-    return best;
-  }, [filteredData]);
-
-  const questionChartData = useMemo(() => {
-    const getQuestionKeys = () => {
-      if (selectedFilters.pergunta !== 'todas') {
-        return [selectedFilters.pergunta];
-      }
-      if (selectedFilters.dimensao !== 'todas') {
-        return dimensionMapping ? (dimensionMapping[selectedFilters.dimensao] || []) : [];
-      }
-      return questionMapping ? Object.keys(questionMapping) : [];
-    };
-
-    const questionKeys = getQuestionKeys();
-    const labels = questionKeys;
-
-    const dataPoints = questionKeys.map(key => {
-      const scores = filteredData
-        .map(item => ratingToScore[item[key]])
-        .filter(score => score !== null && score !== undefined);
-      
-      // Retorna null para não plotar perguntas sem respostas
-      if (scores.length === 0) return null;
-
-      return scores.reduce((a, b) => a + b, 0) / scores.length;
     });
 
-    return {
-      labels,
-      datasets: [
-        {
-          label: 'Média de Respostas',
-          data: dataPoints,
-          backgroundColor: 'rgba(255, 142, 41, 0.8)',
-          borderColor: 'rgba(255, 142, 41, 1)',
-          borderWidth: 1,
-        },
-      ],
-    };
-  }, [filteredData, selectedFilters.pergunta, selectedFilters.dimensao]);
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])[0]
+      ? { name: [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0],
+          count: [...counts.entries()].sort((a, b) => b[1] - a[1])[0][1] }
+      : { name: '-', count: 0 };
+  }, [filteredData]);
 
+  /* =====================================================
+     GRÁFICOS POR DIMENSÃO (2xN)
+  ===================================================== */
+  const chartsByDimension = useMemo(() => {
+    if (!dimensionMapping) return [];
+
+    return Object.entries(dimensionMapping).map(
+      ([dimensionName, questionKeys]) => {
+        const labels = questionKeys;
+
+        const dataPoints = questionKeys.map(key => {
+          const scores = filteredData
+            .map(item => ratingToScore[item[key]])
+            .filter(v => v !== null && v !== undefined);
+
+          if (!scores.length) return null;
+
+          const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          return Number(avg.toFixed(2));
+        });
+
+        return {
+          dimensionName,
+          chartData: {
+            labels,
+            datasets: [
+              {
+                label: 'Média de Respostas',
+                data: dataPoints,
+                backgroundColor: 'rgba(255, 142, 41, 0.8)',
+                borderColor: 'rgba(255, 142, 41, 1)',
+                borderWidth: 1,
+              },
+            ],
+          },
+        };
+      }
+    );
+  }, [filteredData]);
+
+  /* =====================================================
+     Render
+  ===================================================== */
   return (
     <div>
-      <Header 
-        title="Análise de Respostas dos Discentes" 
+      <Header
+        title="Análise de Respostas dos Discentes"
         subtitle="Dados referentes ao questionário 'Minha Opinião'"
       />
+
       <div className={styles.statsGrid}>
         <StatCard
           title="Total de Participantes"
@@ -170,6 +177,7 @@ export default function DiscentePage() {
           icon={<Building2 />}
         />
       </div>
+
       <DiscenteFilters
         filters={filterOptions}
         selectedFilters={selectedFilters}
@@ -177,11 +185,18 @@ export default function DiscentePage() {
         questionMap={questionMapping}
         dimensionMap={dimensionMapping}
       />
-      <QuestionChart
-        chartData={questionChartData}
-        title="Média de Respostas por Pergunta"
-        questionMap={questionMapping}
-      />
+
+      {/* GRID 2xN POR DIMENSÃO */}
+      <div className={styles.dimensionGrid}>
+        {chartsByDimension.map(({ dimensionName, chartData }) => (
+          <QuestionChart
+            key={dimensionName}
+            chartData={chartData}
+            title={dimensionName}
+            questionMap={questionMapping}
+          />
+        ))}
+      </div>
     </div>
   );
 }

@@ -364,3 +364,20 @@
 .generateReportBtn:active {
   transform: translateY(0);
 }
+/* ======================================================
+   GRID 2xN — Gráficos por Dimensão
+====================================================== */
+.dimensionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 32px;
+  margin-top: 32px;
+  align-items: stretch;
+}
+
+/* Responsivo: 1 coluna em telas menores */
+@media (max-width: 1024px) {
+  .dimensionGrid {
+    grid-template-columns: 1fr;
+  }
+}

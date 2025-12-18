@@ -6,9 +6,8 @@ import DocenteFilters from '../components/DocenteFilters';
 import QuestionChart from '../components/QuestionChart';
 import styles from '../../../../styles/dados.module.css';
 import { Users, Building } from 'lucide-react';
-import {questionMappingDocente, ratingToScore } from '../lib/questionMappingDocente';
+import { questionMappingDocente, ratingToScore } from '../lib/questionMappingDocente';
 import { dimensionMapping as dimensionMappingDocente } from '../lib/DimensionMappingDocente';
-
 
 export default function DocentePage() {
   const [allData, setAllData] = useState([]);
@@ -20,19 +19,31 @@ export default function DocentePage() {
     dimensao: 'todas',
   });
 
+  /* =====================================================
+     Carregamento inicial
+  ===================================================== */
   useEffect(() => {
     fetch('/api/docente')
-      .then(res => res.ok ? res.json() : Promise.reject('Falha ao buscar dados'))
+      .then(res => (res.ok ? res.json() : Promise.reject('Falha ao buscar dados')))
       .then(data => {
-        const teacherData = data[2] ? data[2].data : data;
+        const teacherData = data[2]?.data || data;
         setAllData(teacherData);
         setFilteredData(teacherData);
       })
-      .catch(error => console.error("Não foi possível carregar os dados dos docentes:", error));
+      .catch(error =>
+        console.error('Não foi possível carregar os dados dos docentes:', error)
+      );
   }, []);
 
+  /* =====================================================
+     Aplicação dos filtros (lotacao/cargo)
+     OBS: Não filtramos por dimensão aqui, porque agora mostramos todas as dimensões em grid.
+     A dimensão continua existindo no filtro, mas você pode decidir usar para "mostrar só uma"
+     (se quiser isso, eu adapto).
+  ===================================================== */
   useEffect(() => {
     let data = [...allData];
+
     if (selectedFilters.lotacao !== 'todos') {
       data = data.filter(d => d.UND_LOTACAO_DOCENTE === selectedFilters.lotacao);
     }
@@ -40,31 +51,25 @@ export default function DocentePage() {
       data = data.filter(d => d.CARGO_DOCENTE === selectedFilters.cargo);
     }
 
-    if (selectedFilters.dimensao !== 'todos') {
-      const questionKeysInDim = dimensionMappingDocente ? dimensionMappingDocente[selectedFilters.dimensao] : [];
-      
-      if (questionKeysInDim && questionKeysInDim.length > 0) {
-        data = data.filter(respondente => {
-          return questionKeysInDim.some(key => respondente[key] && respondente[key] !== '5');
-        });
-      }
-    }
-
     setFilteredData(data);
-  }, [selectedFilters, allData]);
+  }, [selectedFilters.lotacao, selectedFilters.cargo, allData]);
 
-  // FUNÇÃO CORRIGIDA PARA NÃO RESETAR OS FILTROS
+  /* =====================================================
+     Handle filters
+  ===================================================== */
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
+
     if (name === 'dimensao') {
-      // Esta lógica para resetar a pergunta ao mudar a dimensão está correta
       setSelectedFilters(prev => ({ ...prev, dimensao: value, pergunta: 'todas' }));
     } else {
-      // Lógica simplificada: Apenas atualiza o filtro que foi alterado (lotacao, cargo, etc.)
       setSelectedFilters(prev => ({ ...prev, [name]: value }));
     }
   };
 
+  /* =====================================================
+     Filtros em cascata
+  ===================================================== */
   const filterOptions = useMemo(() => {
     let lotacaoData = allData;
     let cargoData = allData;
@@ -72,108 +77,136 @@ export default function DocentePage() {
     if (selectedFilters.lotacao !== 'todos') {
       cargoData = cargoData.filter(d => d.UND_LOTACAO_DOCENTE === selectedFilters.lotacao);
     }
-    
     if (selectedFilters.cargo !== 'todos') {
-        lotacaoData = lotacaoData.filter(d => d.CARGO_DOCENTE === selectedFilters.cargo);
+      lotacaoData = lotacaoData.filter(d => d.CARGO_DOCENTE === selectedFilters.cargo);
     }
 
     const lotacoesRaw = [...new Set(lotacaoData.map(d => d.UND_LOTACAO_DOCENTE))].filter(Boolean);
-    const lotacaoIndefinida = "NÃO INFORMADO";
+    const lotacaoIndefinida = 'NÃO INFORMADO';
     const lotacoesSorted = lotacoesRaw.filter(l => l !== lotacaoIndefinida).sort();
-    if (lotacoesRaw.includes(lotacaoIndefinida)) {
-      lotacoesSorted.push(lotacaoIndefinida);
-    }
+    if (lotacoesRaw.includes(lotacaoIndefinida)) lotacoesSorted.push(lotacaoIndefinida);
 
     const cargosFiltered = [...new Set(cargoData.map(d => d.CARGO_DOCENTE))]
-      .filter(Boolean).filter(c => c !== 'CARGO INDEFINIDO' && c !== 'MEDICO-AREA').sort();
-    
+      .filter(Boolean)
+      .filter(c => c !== 'CARGO INDEFINIDO' && c !== 'MEDICO-AREA')
+      .sort();
+
     return {
       lotacoes: lotacoesSorted,
       cargos: cargosFiltered,
     };
   }, [allData, selectedFilters.lotacao, selectedFilters.cargo]);
 
+  /* =====================================================
+     Estatística: top lotação
+  ===================================================== */
   const topLotacao = useMemo(() => {
-    if (filteredData.length === 0) return 'N/A';
-    
-    const counts = filteredData.reduce((acc, curr) => {
-      const lotacao = curr.UND_LOTACAO_DOCENTE;
-      if (lotacao) acc[lotacao] = (acc[lotacao] || 0) + 1;
-      return acc;
-    }, {});
+    if (!filteredData.length) return 'N/A';
 
-    if (Object.keys(counts).length === 0) return 'N/A';
+    const counts = new Map();
+    for (const row of filteredData) {
+      const lotacao = row.UND_LOTACAO_DOCENTE || 'NÃO INFORMADO';
+      counts.set(lotacao, (counts.get(lotacao) || 0) + 1);
+    }
 
-    const topName = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
-    
-    return `${topName} — ${counts[topName]}`;
+    let best = { name: 'N/A', count: 0 };
+    [...counts.entries()]
+      .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]), 'pt-BR'))
+      .forEach(([name, count], idx) => {
+        if (idx === 0) best = { name, count };
+      });
+
+    return `${best.name} — ${best.count.toLocaleString('pt-BR')}`;
   }, [filteredData]);
 
-  const questionChartData = useMemo(() => {
-    const getQuestionKeys = () => {
-      if (selectedFilters.pergunta !== 'todas') {
-        return [selectedFilters.pergunta];
-      }
-      if (selectedFilters.dimensao !== 'todas') {
-        return dimensionMappingDocente ? (dimensionMappingDocente[selectedFilters.dimensao] || []) : [];
-      }
-      return questionMappingDocente ? Object.keys(questionMappingDocente) : [];
-    };
+  /* =====================================================
+     GRÁFICOS POR DIMENSÃO (2xN)
+     Regra:
+       - Se selectedFilters.dimensao !== 'todas', mostra só aquela dimensão
+       - Caso contrário, mostra todas
+  ===================================================== */
+  const chartsByDimension = useMemo(() => {
+    if (!dimensionMappingDocente) return [];
 
-    const questionKeys = getQuestionKeys();
-    const labels = questionKeys;
-    const dataPoints = questionKeys.map(key => {
-      const scores = filteredData
-        .map(item => ratingToScore[item[key]])
-        .filter(score => score !== null && score !== undefined);
-      
-      if (scores.length === 0) return null;
+    const entries =
+      selectedFilters.dimensao !== 'todas'
+        ? [[selectedFilters.dimensao, dimensionMappingDocente[selectedFilters.dimensao] || []]]
+        : Object.entries(dimensionMappingDocente);
 
-      const average = scores.reduce((a, b) => a + b, 0) / scores.length;
-      return average;
-    });
-    return {
-      labels: labels,
-      datasets: [{
-          label: 'Média de Respostas',
-          data: dataPoints,
-          backgroundColor: 'rgba(255, 142, 41, 0.8)',
-          borderColor: 'rgba(255, 142, 41, 1)',
-          borderWidth: 1,
-      }],
-    };
-  }, [filteredData, selectedFilters.pergunta, selectedFilters.dimensao]);
+    return entries
+      .map(([dimensionName, questionKeys]) => {
+        const labels = questionKeys;
+
+        const dataPoints = questionKeys.map(key => {
+          const scores = filteredData
+            .map(item => ratingToScore[item[key]])
+            .filter(v => v !== null && v !== undefined);
+
+          if (!scores.length) return null;
+
+          const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          return Number(avg.toFixed(2));
+        });
+
+        return {
+          dimensionName,
+          chartData: {
+            labels,
+            datasets: [
+              {
+                label: 'Média de Respostas',
+                data: dataPoints,
+                backgroundColor: 'rgba(255, 142, 41, 0.8)',
+                borderColor: 'rgba(255, 142, 41, 1)',
+                borderWidth: 1,
+              },
+            ],
+          },
+        };
+      })
+      // Opcional: se dimensão estiver vazia (sem perguntas), não renderiza
+      .filter(d => d.chartData.labels && d.chartData.labels.length > 0);
+  }, [filteredData, selectedFilters.dimensao]);
 
   return (
     <div>
-      <Header 
-        title="Análise de Respostas dos Docentes" 
+      <Header
+        title="Análise de Respostas dos Docentes"
         subtitle="Dados referentes ao questionário de autoavaliação"
       />
+
       <div className={styles.statsGrid}>
-        <StatCard 
-          title="Total de Participantes" 
-          value={filteredData.length.toLocaleString('pt-BR')} 
-          icon={<Users />} 
+        <StatCard
+          title="Total de Participantes"
+          value={filteredData.length.toLocaleString('pt-BR')}
+          icon={<Users />}
         />
-        <StatCard 
-          title="Lotação com Mais Participantes" 
+        <StatCard
+          title="Lotação com Mais Participantes"
           value={topLotacao}
           icon={<Building />}
         />
       </div>
-      <DocenteFilters 
+
+      <DocenteFilters
         filters={filterOptions}
         selectedFilters={selectedFilters}
         onFilterChange={handleFilterChange}
         questionMap={questionMappingDocente}
         dimensionMap={dimensionMappingDocente}
       />
-      <QuestionChart 
-        chartData={questionChartData}
-        title="Média de Respostas por Pergunta"
-        questionMap={questionMappingDocente}
-      />
+
+      {/* GRID 2xN POR DIMENSÃO */}
+      <div className={styles.dimensionGrid}>
+        {chartsByDimension.map(({ dimensionName, chartData }) => (
+          <QuestionChart
+            key={dimensionName}
+            chartData={chartData}
+            title={`${dimensionName}: ${String(dimensionName).toUpperCase?.() ? '' : ''}`}
+            questionMap={questionMappingDocente}
+          />
+        ))}
+      </div>
     </div>
   );
 }
