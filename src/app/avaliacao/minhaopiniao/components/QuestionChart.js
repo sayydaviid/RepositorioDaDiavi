@@ -11,89 +11,142 @@ import {
   Legend,
 } from 'chart.js';
 import styles from '../../../../styles/dados.module.css';
-// 1. REMOVA a importação estática do questionMapping
-// import { questionMapping } from '../lib/questionMapping'; 
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
+/* ======================================================
+   Helper: quebra textos longos (tooltip)
+====================================================== */
 function wrapLines(text, max = 70) {
   if (!text) return [];
   const words = text.split(' ');
   const lines = [];
   let line = '';
+
   for (const w of words) {
-    if ((line + ' ' + w).trim().length > max) {
-      lines.push(line.trim());
+    const testLine = line ? `${line} ${w}` : w;
+    if (testLine.length > max) {
+      if (line) lines.push(line);
       line = w;
     } else {
-      line = (line ? line + ' ' : '') + w;
+      line = testLine;
     }
   }
-  if (line) lines.push(line.trim());
+
+  if (line) lines.push(line);
   return lines;
 }
 
+/* ======================================================
+   QuestionChart
+====================================================== */
 /**
- * Componente que renderiza um gráfico de barras genérico.
  * @param {object} props
- * @param {object} props.chartData - Objeto de dados formatado para o Chart.js.
- * @param {string} props.title - O título a ser exibido acima do gráfico.
- * @param {object} props.questionMap - O mapa de perguntas (discente ou docente).
- * @param {object} [props.options] - Opções personalizadas para mesclar com as opções padrão.
+ * @param {object} props.chartData  Dados formatados para o Chart.js
+ * @param {string} props.title      Título do gráfico
+ * @param {object} props.questionMap Mapa de perguntas (discente/docente)
+ * @param {object} [props.options]  Opções extras do Chart.js
  */
-// 2. ADICIONE questionMap e options às props recebidas
-export default function QuestionChart({ chartData, title, questionMap, options: customOptions }) {
+export default function QuestionChart({
+  chartData,
+  title,
+  questionMap,
+  options: customOptions,
+}) {
   const defaultOptions = {
     responsive: true,
     maintainAspectRatio: false,
+
     plugins: {
-      legend: { display: false },
+      legend: {
+        display: false,
+      },
+
       title: {
         display: true,
         text: title,
-        font: { size: 18, weight: 'bold' },
-        padding: { bottom: 20 },
+        font: {
+          size: 18,
+          weight: 'bold',
+        },
+        padding: {
+          bottom: 20,
+        },
       },
+
       tooltip: {
         backgroundColor: '#050F24',
         titleFont: { size: 14 },
         bodyFont: { size: 12 },
+
         callbacks: {
           title: (items) => {
             const key = items?.[0]?.label;
-            // 3. USE o questionMap da prop, não o importado
-            const full = questionMap ? (questionMap[key] || '') : '';
-            return [key, ...wrapLines(full, 70)];
+            const fullText = questionMap?.[key] || '';
+            return [key, ...wrapLines(fullText, 70)];
           },
+
           label: (context) => {
-            const v = context.parsed.y;
-            if (v !== null && v !== undefined) {
-              const formattedValue = Number(v).toFixed(2).replace('.', ',');
-              return ` Média ${formattedValue} de 5`;
-            }
-            return '';
+            const value = context.parsed.y;
+            if (value === null || value === undefined) return '';
+
+            const formatted = Number(value)
+              .toFixed(2)
+              .replace('.', ',');
+
+            return `Média: ${formatted} de 5`;
           },
         },
       },
     },
+
     scales: {
       y: {
         beginAtZero: true,
+        min: 0,
         max: 5,
-        ticks: { stepSize: 1 },
+        ticks: {
+          stepSize: 1,
+        },
+        title: {
+          display: true,
+          text: 'Média',
+        },
       },
+
       x: {
-        ticks: { font: { weight: 'bold' } },
+        ticks: {
+          font: {
+            weight: 'bold',
+          },
+        },
       },
     },
   };
 
-  // Combina as opções padrão com as personalizadas que podem ser passadas
-  const options = { ...defaultOptions, ...customOptions };
+  // Mescla opções padrão com opções customizadas (se existirem)
+  const options = {
+    ...defaultOptions,
+    ...customOptions,
+    plugins: {
+      ...defaultOptions.plugins,
+      ...(customOptions?.plugins || {}),
+    },
+    scales: {
+      ...defaultOptions.scales,
+      ...(customOptions?.scales || {}),
+    },
+  };
 
   return (
     <div className={styles.chartContainer}>
-      {/* 4. Passe as opções finais para o gráfico */}
       <Bar data={chartData} options={options} />
     </div>
   );
