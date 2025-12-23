@@ -3,13 +3,23 @@ import { useState, useMemo, useEffect } from 'react';
 import styles from '../../../../styles/dados.module.css';
 import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
 
-// 1. Receba 'dimensionMap' como prop
-export default function DiscenteFilters({ filters, selectedFilters, onFilterChange, questionMap, dimensionMap }) {
+export default function DiscenteFilters({
+  title = 'Filtros',
+  filters,
+  selectedFilters,
+  onFilterChange,
+  questionMap,
+  dimensionMap,
+
+  // Comparação (opcional; só o card A usa)
+  showCompareToggle = false,
+  compareEnabled = false,
+  onCompareChange = () => {}
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const { campus, unidades, cursos } = filters;
 
-  // ========= IBGE (municípios do Pará) =========
-  const [ibgeDict, setIbgeDict] = useState(null); // { [normalizado]: 'Nome Oficial' }
+  const [ibgeDict, setIbgeDict] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -29,7 +39,6 @@ export default function DiscenteFilters({ filters, selectedFilters, onFilterChan
     return () => { alive = false; };
   }, []);
 
-  // ========= Helpers de exibição =========
   const reNaoInformado = /^(nao|não)\s*informado$/i;
 
   function normalizeNoAccents(str) {
@@ -41,7 +50,6 @@ export default function DiscenteFilters({ filters, selectedFilters, onFilterChan
       .trim();
   }
 
-  // Corrige o rótulo apenas para municípios do PA com base no IBGE.
   function beautifyLabel(raw) {
     const v = raw == null ? '' : String(raw).trim();
     if (reNaoInformado.test(v)) return 'Não Informado';
@@ -52,9 +60,6 @@ export default function DiscenteFilters({ filters, selectedFilters, onFilterChan
     return v;
   }
 
-  // Prepara lista com opções:
-  // - dropNaoInformado=true => REMOVE "Não Informado"
-  // - dropNaoInformado=false => mantém e move para o final
   function prepList(arr = [], { dropNaoInformado = false } = {}) {
     const list = (arr || []).map(v => (v == null ? '' : String(v).trim()));
 
@@ -68,108 +73,148 @@ export default function DiscenteFilters({ filters, selectedFilters, onFilterChan
     return tail ? [...body, tail] : body;
   }
 
-  // Listas tratadas
-  const campusList   = useMemo(() => prepList(campus,   { dropNaoInformado: false }), [campus, ibgeDict]);
-  const unidadesList = useMemo(() => prepList(unidades, { dropNaoInformado: true  }), [unidades, ibgeDict]);
-  const cursosList   = useMemo(() => prepList(cursos,   { dropNaoInformado: true  }), [cursos, ibgeDict]);
+  const campusList = useMemo(() => prepList(campus, { dropNaoInformado: false }), [campus, ibgeDict]);
+  const unidadesList = useMemo(() => prepList(unidades, { dropNaoInformado: true }), [unidades, ibgeDict]);
+  const cursosList = useMemo(() => prepList(cursos, { dropNaoInformado: true }), [cursos, ibgeDict]);
 
-  // 2. Filtra as perguntas disponíveis com base na dimensão selecionada
   const availableQuestions = useMemo(() => {
     const selectedDim = selectedFilters.dimensao;
     if (selectedDim && selectedDim !== 'todas' && dimensionMap && dimensionMap[selectedDim]) {
       const questionKeysInDim = dimensionMap[selectedDim];
       const filtered = {};
       questionKeysInDim.forEach(key => {
-        if (questionMap[key]) {
-          filtered[key] = questionMap[key];
-        }
+        if (questionMap[key]) filtered[key] = questionMap[key];
       });
       return filtered;
     }
-    return questionMap; // Se 'todas', retorna todas as perguntas
+    return questionMap;
   }, [selectedFilters.dimensao, questionMap, dimensionMap]);
+
+  // Garante consistência Dimensão -> Pergunta
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name === 'dimensao') {
+      const nextDim = value;
+      const currentQuestion = selectedFilters.pergunta;
+
+      if (currentQuestion && currentQuestion !== 'todas') {
+        if (
+          nextDim !== 'todas' &&
+          dimensionMap &&
+          dimensionMap[nextDim] &&
+          !dimensionMap[nextDim].includes(currentQuestion)
+        ) {
+          onFilterChange({ target: { name: 'dimensao', value: nextDim } });
+          onFilterChange({ target: { name: 'pergunta', value: 'todas' } });
+          return;
+        }
+      }
+    }
+
+    onFilterChange(e);
+  };
 
   return (
     <div className={styles.filtersWrapper}>
       <button
+        type="button"
         className={styles.filterToggleButton}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setIsOpen(v => !v)}
       >
         <Filter size={20} />
-        <span>Filtros</span>
+        <span>{title}</span>
         {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
       </button>
 
       <div className={`${styles.filtersContent} ${isOpen ? styles.open : ''}`}>
-        {/* Campus (mantém "Não Informado" no fim) */}
         <select
           name="campus"
           value={selectedFilters.campus}
-          onChange={onFilterChange}
+          onChange={handleChange}
           className={styles.filterSelect}
         >
           <option value="todos">Todos os Campi</option>
           {campusList.map((c, i) => (
-            <option key={`${c}-${i}`} value={c}>{beautifyLabel(c)}</option>
+            <option key={`${c}-${i}`} value={c}>
+              {beautifyLabel(c)}
+            </option>
           ))}
         </select>
 
-        {/* Unidade (SEM "Não Informado") */}
         <select
           name="unidade"
           value={selectedFilters.unidade}
-          onChange={onFilterChange}
+          onChange={handleChange}
           className={styles.filterSelect}
         >
           <option value="todos">Todas as Unidades</option>
           {unidadesList.map((u, i) => (
-            <option key={`${u}-${i}`} value={u}>{beautifyLabel(u)}</option>
+            <option key={`${u}-${i}`} value={u}>
+              {beautifyLabel(u)}
+            </option>
           ))}
         </select>
 
-        {/* Curso (SEM "Não Informado") */}
         <select
           name="curso"
           value={selectedFilters.curso}
-          onChange={onFilterChange}
+          onChange={handleChange}
           className={styles.filterSelect}
         >
           <option value="todos">Todos os Cursos</option>
           {cursosList.map((c, i) => (
-            <option key={`${c}-${i}`} value={c}>{beautifyLabel(c)}</option>
+            <option key={`${c}-${i}`} value={c}>
+              {beautifyLabel(c)}
+            </option>
           ))}
         </select>
 
-        {/* 3. Adicione o novo seletor de Dimensão */}
         <select
           name="dimensao"
           value={selectedFilters.dimensao}
-          onChange={onFilterChange}
+          onChange={handleChange}
           className={`${styles.filterSelect} ${styles.filterSelectWide}`}
         >
           <option value="todas">Todas as Dimensões</option>
           {dimensionMap && Object.keys(dimensionMap).map((dim, i) => (
-            <option key={`${dim}-${i}`} value={dim}>{dim}</option>
+            <option key={`${dim}-${i}`} value={dim}>
+              {dim}
+            </option>
           ))}
         </select>
 
-        {/* 4. Perguntas (agora usa a lista filtrada 'availableQuestions') */}
-        <select
-          name="pergunta"
-          value={selectedFilters.pergunta}
-          onChange={onFilterChange}
-          className={`${styles.filterSelect} ${styles.filterSelectWide}`}
-        >
-          <option value="todas">Analisar as Perguntas</option>
-          {availableQuestions && Object.keys(availableQuestions).map((key) => {
-            const fullText = `${key}: ${availableQuestions[key]}`;
-            return (
-              <option key={key} value={key} title={fullText}>
-                {fullText}
-              </option>
-            );
-          })}
-        </select>
+        {/* Linha final: Pergunta + Comparação (lado a lado) */}
+        <div className={styles.questionCompareRow}>
+          <select
+            name="pergunta"
+            value={selectedFilters.pergunta}
+            onChange={handleChange}
+            className={styles.filterSelect}
+          >
+            <option value="todas">Analisar as Perguntas</option>
+            {availableQuestions && Object.keys(availableQuestions).map((key) => {
+              const fullText = `${key}: ${availableQuestions[key]}`;
+              return (
+                <option key={key} value={key} title={fullText}>
+                  {fullText}
+                </option>
+              );
+            })}
+          </select>
+
+          {showCompareToggle && (
+            <label className={styles.compareInlineLabel}>
+              <input
+                className={styles.compareCheckbox}
+                type="checkbox"
+                checked={compareEnabled}
+                onChange={(e) => onCompareChange(e.target.checked)}
+              />
+              Comparação
+            </label>
+          )}
+        </div>
       </div>
     </div>
   );

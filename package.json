@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n \"BACKEND-R,NEXTJS,BROWSER\" -c \"magenta,blue,cyan\" \"cd src/app/avaliacao/avalia/backend-avalia && Rscript run.R\" \"wait-on -v http-get://127.0.0.1:8000/health && next dev\" \"wait-on -v http-get://127.0.0.1:3000 && open-cli http://localhost:3000/avaliacao/avalia\"",
+    "dev": "concurrently -n \"NEXTJS,BROWSER\" -c \"blue,cyan\" \"next dev\" \"wait-on -v http-get://127.0.0.1:3000 && open-cli http://localhost:3000/avaliacao/avalia\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

@@ -1,100 +1,150 @@
 'use client';
+
 import { useState, useMemo } from 'react';
 import styles from '../../../../styles/dados.module.css';
 import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
 
-/**
- * Componente que renderiza um painel de filtros sanfonado (accordion) com caixas de seleção padrão.
- */
-// 1. Receba 'dimensionMap' como prop
-export default function DocenteFilters({ filters, selectedFilters, onFilterChange, questionMap, dimensionMap }) {
+export default function DocenteFilters({
+  title = 'Filtros',
+  filters,
+  selectedFilters,
+  onFilterChange,
+  questionMap,
+  dimensionMap,
+
+  // Comparação (opcional; só o card A usa)
+  showCompareToggle = false,
+  compareEnabled = false,
+  onCompareChange = () => {}
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const { lotacoes, cargos } = filters;
 
-  // 2. Filtra as perguntas disponíveis com base na dimensão selecionada
+  // Perguntas disponíveis filtradas por dimensão
   const availableQuestions = useMemo(() => {
     const selectedDim = selectedFilters.dimensao;
     if (selectedDim && selectedDim !== 'todas' && dimensionMap && dimensionMap[selectedDim]) {
-      const questionKeysInDim = dimensionMap[selectedDim];
+      const keys = dimensionMap[selectedDim];
       const filtered = {};
-      questionKeysInDim.forEach(key => {
-        if (questionMap[key]) {
-          filtered[key] = questionMap[key];
-        }
+      keys.forEach((k) => {
+        if (questionMap?.[k]) filtered[k] = questionMap[k];
       });
       return filtered;
     }
-    return questionMap; // Se 'todas', retorna todas as perguntas
+    return questionMap;
   }, [selectedFilters.dimensao, questionMap, dimensionMap]);
 
+  // Consistência Dimensão -> Pergunta (igual Discente)
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name === 'dimensao') {
+      const nextDim = value;
+      const currentQuestion = selectedFilters.pergunta;
+
+      if (
+        currentQuestion &&
+        currentQuestion !== 'todas' &&
+        nextDim !== 'todas' &&
+        dimensionMap?.[nextDim] &&
+        !dimensionMap[nextDim].includes(currentQuestion)
+      ) {
+        onFilterChange({ target: { name: 'dimensao', value: nextDim } });
+        onFilterChange({ target: { name: 'pergunta', value: 'todas' } });
+        return;
+      }
+    }
+
+    onFilterChange(e);
+  };
 
   return (
     <div className={styles.filtersWrapper}>
-      <button 
-        className={styles.filterToggleButton} 
-        onClick={() => setIsOpen(!isOpen)}
+      <button
+        type="button"
+        className={styles.filterToggleButton}
+        onClick={() => setIsOpen((v) => !v)}
       >
         <Filter size={20} />
-        <span>Filtros</span>
+        <span>{title}</span>
         {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
       </button>
 
       <div className={`${styles.filtersContent} ${isOpen ? styles.open : ''}`}>
-        
-        <select 
+        <select
           name="lotacao"
           value={selectedFilters.lotacao}
-          onChange={onFilterChange}
+          onChange={handleChange}
           className={styles.filterSelect}
         >
           <option value="todos">Todas as Lotações</option>
-          {lotacoes && lotacoes.map((l, index) => <option key={`${l}-${index}`} value={l}>{l}</option>)}
+          {lotacoes?.map((l, i) => (
+            <option key={`${l}-${i}`} value={l}>
+              {l}
+            </option>
+          ))}
         </select>
 
-        <select 
+        <select
           name="cargo"
           value={selectedFilters.cargo}
-          onChange={onFilterChange}
+          onChange={handleChange}
           className={styles.filterSelect}
         >
           <option value="todos">Todos os Cargos</option>
-          {cargos && cargos.map((c, index) => <option key={`${c}-${index}`} value={c}>{c}</option>)}
+          {cargos?.map((c, i) => (
+            <option key={`${c}-${i}`} value={c}>
+              {c}
+            </option>
+          ))}
         </select>
-        
-        {/* 3. Adicione o novo seletor de Dimensão */}
+
         <select
           name="dimensao"
           value={selectedFilters.dimensao}
-          onChange={onFilterChange}
+          onChange={handleChange}
           className={`${styles.filterSelect} ${styles.filterSelectWide}`}
         >
           <option value="todas">Todas as Dimensões</option>
           {dimensionMap && Object.keys(dimensionMap).map((dim, i) => (
-            <option key={`${dim}-${i}`} value={dim}>{dim}</option>
+            <option key={`${dim}-${i}`} value={dim}>
+              {dim}
+            </option>
           ))}
         </select>
 
-        {/* 4. Filtro de Perguntas (agora usa a lista filtrada 'availableQuestions') */}
-        <select 
-          name="pergunta" 
-          value={selectedFilters.pergunta} 
-          onChange={onFilterChange}
-          className={`${styles.filterSelect} ${styles.filterSelectWide}`}
-        >
-          <option value="todas">Analisar as Perguntas</option>
-          {availableQuestions && Object.keys(availableQuestions).map(key => {
-            const fullText = `${key}: ${availableQuestions[key]}`;
-            return (
-              <option 
-                key={key} 
-                value={key}
-                title={fullText}
-              >
-                {fullText}
-              </option>
-            );
-          })}
-        </select>
+        {/* Linha final: Pergunta + Comparação (lado a lado) */}
+        <div className={styles.questionCompareRow}>
+          <select
+            name="pergunta"
+            value={selectedFilters.pergunta}
+            onChange={handleChange}
+            className={styles.filterSelect}
+          >
+            <option value="todas">Analisar as Perguntas</option>
+            {availableQuestions &&
+              Object.keys(availableQuestions).map((key) => {
+                const fullText = `${key}: ${availableQuestions[key]}`;
+                return (
+                  <option key={key} value={key} title={fullText}>
+                    {fullText}
+                  </option>
+                );
+              })}
+          </select>
+
+          {showCompareToggle && (
+            <label className={styles.compareInlineLabel}>
+              <input
+                className={styles.compareCheckbox}
+                type="checkbox"
+                checked={compareEnabled}
+                onChange={(e) => onCompareChange(e.target.checked)}
+              />
+              Comparação
+            </label>
+          )}
+        </div>
       </div>
     </div>
   );
