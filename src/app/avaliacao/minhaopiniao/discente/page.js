@@ -39,35 +39,72 @@ export default function DiscentePage() {
       .catch((err) => console.error('Erro ao carregar dados:', err));
   }, []);
 
-  const filteredDataA = useMemo(() => applyFilters(allData, selectedFiltersA), [allData, selectedFiltersA]);
-  const filteredDataB = useMemo(() => applyFilters(allData, selectedFiltersB), [allData, selectedFiltersB]);
+  // Dados filtrados (somente campus/unidade/curso)
+  const filteredDataA = useMemo(
+    () => applyFilters(allData, selectedFiltersA),
+    [allData, selectedFiltersA]
+  );
+  const filteredDataB = useMemo(
+    () => applyFilters(allData, selectedFiltersB),
+    [allData, selectedFiltersB]
+  );
 
-  const filterOptionsA = useMemo(() => buildFilterOptions(allData, selectedFiltersA), [allData, selectedFiltersA]);
-  const filterOptionsB = useMemo(() => buildFilterOptions(allData, selectedFiltersB), [allData, selectedFiltersB]);
+  // Opções dependentes (NUNCA deixam o usuário escolher algo que vira 0)
+  const filterOptionsA = useMemo(
+    () => buildFilterOptions(allData, selectedFiltersA),
+    [allData, selectedFiltersA]
+  );
+  const filterOptionsB = useMemo(
+    () => buildFilterOptions(allData, selectedFiltersB),
+    [allData, selectedFiltersB]
+  );
 
   const topUnitA = useMemo(() => calcTopUnit(filteredDataA), [filteredDataA]);
   const topUnitB = useMemo(() => calcTopUnit(filteredDataB), [filteredDataB]);
 
-  // Cores: A (Laranja) e B (Azul)
+  // Gráficos (já respeitando dimensão/pergunta selecionadas e removendo vazios)
   const chartsByDimensionA = useMemo(
-    () => buildChartsByDimension(filteredDataA, 'rgba(255, 142, 41, 0.8)', 'rgba(255, 142, 41, 1)'),
-    [filteredDataA]
+    () =>
+      buildChartsByDimension(
+        filteredDataA,
+        'rgba(255, 142, 41, 0.8)',
+        'rgba(255, 142, 41, 1)',
+        selectedFiltersA
+      ),
+    [filteredDataA, selectedFiltersA]
   );
 
   const chartsByDimensionB = useMemo(
-    () => buildChartsByDimension(filteredDataB, 'rgba(54, 162, 235, 0.8)', 'rgba(54, 162, 235, 1)'),
-    [filteredDataB]
+    () =>
+      buildChartsByDimension(
+        filteredDataB,
+        'rgba(54, 162, 235, 0.8)',
+        'rgba(54, 162, 235, 1)',
+        selectedFiltersB
+      ),
+    [filteredDataB, selectedFiltersB]
   );
 
   const handleFilterChangeA = (e) => {
     const { name, value } = e.target;
-    setSelectedFiltersA((prev) => ({ ...prev, [name]: value }));
+    setSelectedFiltersA((prev) => sanitizeFilters(allData, { ...prev, [name]: value }));
   };
 
   const handleFilterChangeB = (e) => {
     const { name, value } = e.target;
-    setSelectedFiltersB((prev) => ({ ...prev, [name]: value }));
+    setSelectedFiltersB((prev) => sanitizeFilters(allData, { ...prev, [name]: value }));
   };
+
+  /**
+   * CORREÇÃO:
+   * Se A e B tiverem exatamente 1 gráfico cada, sempre renderiza lado a lado.
+   * Isso evita o caso em que A escolhe uma dimensão e B escolhe outra e os gráficos
+   * ficam um embaixo do outro por causa do CompareDimensions (que “une dimensões”).
+   */
+  const specialPairSideBySide =
+    compareEnabled &&
+    chartsByDimensionA.length === 1 &&
+    chartsByDimensionB.length === 1;
 
   return (
     <div className={styles.container}>
@@ -88,6 +125,7 @@ export default function DiscentePage() {
           value={`${topUnitA.name} — ${topUnitA.count.toLocaleString('pt-BR')}`}
           icon={<Building2 />}
         />
+
         {compareEnabled && (
           <>
             <StatCard
@@ -117,7 +155,7 @@ export default function DiscentePage() {
           compareEnabled={compareEnabled}
           onCompareChange={(checked) => {
             setCompareEnabled(checked);
-            if (checked) setSelectedFiltersB(selectedFiltersA);
+            if (checked) setSelectedFiltersB(sanitizeFilters(allData, { ...selectedFiltersA }));
           }}
         />
 
@@ -132,71 +170,200 @@ export default function DiscentePage() {
           />
         )}
       </div>
-{/* Main Charts Section */}
-<div className={styles.chartsMainContainer}>
-  {compareEnabled ? (
-    // COMPARAÇÃO: mantém par A/B por dimensão
-    chartsByDimensionA.map(({ dimensionName, chartData }, index) => (
-      <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
-        <div className={styles.equalGrid}>
-          <div className={styles.chartContainerCard}>
-            <QuestionChart
-              chartData={chartData}
-              title={`${dimensionName} (A)`}
-              questionMap={questionMapping}
-            />
-          </div>
 
-          {chartsByDimensionB[index] && (
-            <div className={styles.chartContainerCard}>
-              <QuestionChart
-                chartData={chartsByDimensionB[index].chartData}
-                title={`${dimensionName} (B)`}
-                questionMap={questionMapping}
-              />
-            </div>
-          )}
-        </div>
-      </section>
-    ))
-  ) : (
-    // SEM COMPARAÇÃO: UM GRID com todos os gráficos (2 por linha)
-    <div className={styles.singleGrid}>
-      {chartsByDimensionA.map(({ dimensionName, chartData }) => (
-        <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
-          <QuestionChart
-            chartData={chartData}
-            title={dimensionName}
-            questionMap={questionMapping}
-          />
-        </div>
-      ))}
-    </div>
-  )}
-</div>
+      {/* Main Charts Section */}
+      <div className={styles.chartsMainContainer}>
+        {compareEnabled ? (
+          specialPairSideBySide ? (
+            // Agora: sempre lado a lado quando A e B têm 1 gráfico cada
+            <section className={styles.dimensionWrapper}>
+              <div className={styles.equalGrid}>
+                <div className={styles.chartContainerCard}>
+                  <QuestionChart
+                    chartData={chartsByDimensionA[0].chartData}
+                    title={`${chartsByDimensionA[0].dimensionName} (A)`}
+                    questionMap={questionMapping}
+                  />
+                </div>
+
+                <div className={styles.chartContainerCard}>
+                  <QuestionChart
+                    chartData={chartsByDimensionB[0].chartData}
+                    title={`${chartsByDimensionB[0].dimensionName} (B)`}
+                    questionMap={questionMapping}
+                  />
+                </div>
+              </div>
+            </section>
+          ) : (
+            // Comparação normal: une dimensões (sem renderizar “vazios”)
+            <CompareDimensions
+              chartsA={chartsByDimensionA}
+              chartsB={chartsByDimensionB}
+              questionMap={questionMapping}
+              styles={styles}
+            />
+          )
+        ) : (
+          // Sem comparação: grid normal (já filtrado por dimensão/pergunta)
+          <div className={styles.singleGrid}>
+            {chartsByDimensionA.map(({ dimensionName, chartData }) => (
+              <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
+                <QuestionChart
+                  chartData={chartData}
+                  title={dimensionName}
+                  questionMap={questionMapping}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Opcional: estado vazio */}
+        {!compareEnabled && chartsByDimensionA.length === 0 && (
+          <div style={{ padding: 16, opacity: 0.75 }}>
+            Nenhum dado encontrado para os filtros selecionados.
+          </div>
+        )}
+        {compareEnabled && chartsByDimensionA.length === 0 && chartsByDimensionB.length === 0 && (
+          <div style={{ padding: 16, opacity: 0.75 }}>
+            Nenhum dado encontrado para os filtros selecionados.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/* --- Funções de Apoio (Mantidas) --- */
+/* =========================
+   Render de comparação
+========================= */
+function CompareDimensions({ chartsA, chartsB, questionMap, styles }) {
+  const aMap = new Map((chartsA || []).map((c) => [c.dimensionName, c]));
+  const bMap = new Map((chartsB || []).map((c) => [c.dimensionName, c]));
+  const allNames = Array.from(new Set([...(aMap.keys() || []), ...(bMap.keys() || [])]));
+
+  return (
+    <>
+      {allNames.map((dimensionName) => {
+        const a = aMap.get(dimensionName);
+        const b = bMap.get(dimensionName);
+
+        if (!a && !b) return null;
+
+        return (
+          <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
+            <div className={styles.equalGrid}>
+              {a && (
+                <div
+                  className={styles.chartContainerCard}
+                  style={!b ? { gridColumn: '1 / -1' } : undefined}
+                >
+                  <QuestionChart
+                    chartData={a.chartData}
+                    title={`${dimensionName} (A)`}
+                    questionMap={questionMap}
+                  />
+                </div>
+              )}
+
+              {b && (
+                <div
+                  className={styles.chartContainerCard}
+                  style={!a ? { gridColumn: '1 / -1' } : undefined}
+                >
+                  <QuestionChart
+                    chartData={b.chartData}
+                    title={`${dimensionName} (B)`}
+                    questionMap={questionMap}
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
+/* =========================
+   Funções de apoio
+========================= */
+function norm(v) {
+  return String(v ?? '').trim();
+}
+
+function rowMatch(rowValue, selectedValue) {
+  return selectedValue === 'todos' || norm(rowValue) === norm(selectedValue);
+}
+
 function applyFilters(allData, selectedFilters) {
   if (!Array.isArray(allData)) return [];
+  const f = selectedFilters || {};
   return allData.filter((d) => {
-    const matchCampus = selectedFilters.campus === 'todos' || d.CAMPUS_DISCENTE === selectedFilters.campus;
-    const matchUnidade = selectedFilters.unidade === 'todos' || d.UNIDADE_DISCENTE === selectedFilters.unidade;
-    const matchCurso = selectedFilters.curso === 'todos' || d.CURSO_DISCENTE === selectedFilters.curso;
-    return matchCampus && matchUnidade && matchCurso;
+    const okCampus = rowMatch(d.CAMPUS_DISCENTE, f.campus);
+    const okUnidade = rowMatch(d.UNIDADE_DISCENTE, f.unidade);
+    const okCurso = rowMatch(d.CURSO_DISCENTE, f.curso);
+    return okCampus && okUnidade && okCurso;
   });
 }
 
-function buildFilterOptions(allData) {
-  if (!Array.isArray(allData) || !allData.length) return { campus: [], unidades: [], cursos: [] };
-  const uniq = (data, key) => [...new Set(data.map((d) => d[key]))].filter(Boolean).sort();
+function buildFilterOptions(allData, selectedFilters) {
+  if (!Array.isArray(allData) || !allData.length) {
+    return { campus: [], unidades: [], cursos: [] };
+  }
+
+  const f = selectedFilters || { campus: 'todos', unidade: 'todos', curso: 'todos' };
+
+  function keepRowForOptions(row, ignoreKey) {
+    const campusOk = ignoreKey === 'CAMPUS_DISCENTE' ? true : rowMatch(row.CAMPUS_DISCENTE, f.campus);
+    const unidadeOk = ignoreKey === 'UNIDADE_DISCENTE' ? true : rowMatch(row.UNIDADE_DISCENTE, f.unidade);
+    const cursoOk = ignoreKey === 'CURSO_DISCENTE' ? true : rowMatch(row.CURSO_DISCENTE, f.curso);
+    return campusOk && unidadeOk && cursoOk;
+  }
+
+  function uniqFrom(key, ignoreKey) {
+    const set = new Set();
+    for (const row of allData) {
+      if (!keepRowForOptions(row, ignoreKey)) continue;
+      const val = norm(row[key]);
+      if (val) set.add(val);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }
+
   return {
-    campus: uniq(allData, 'CAMPUS_DISCENTE'),
-    unidades: uniq(allData, 'UNIDADE_DISCENTE'),
-    cursos: uniq(allData, 'CURSO_DISCENTE'),
+    campus: uniqFrom('CAMPUS_DISCENTE', 'CAMPUS_DISCENTE'),
+    unidades: uniqFrom('UNIDADE_DISCENTE', 'UNIDADE_DISCENTE'),
+    cursos: uniqFrom('CURSO_DISCENTE', 'CURSO_DISCENTE'),
   };
+}
+
+function sanitizeFilters(allData, filters) {
+  let next = { ...filters };
+
+  for (let i = 0; i < 4; i++) {
+    const opts = buildFilterOptions(allData, next);
+    let changed = false;
+
+    if (next.campus !== 'todos' && !opts.campus.includes(norm(next.campus))) {
+      next.campus = 'todos';
+      changed = true;
+    }
+    if (next.unidade !== 'todos' && !opts.unidades.includes(norm(next.unidade))) {
+      next.unidade = 'todos';
+      changed = true;
+    }
+    if (next.curso !== 'todos' && !opts.cursos.includes(norm(next.curso))) {
+      next.curso = 'todos';
+      changed = true;
+    }
+
+    if (!changed) break;
+  }
+
+  return next;
 }
 
 function calcTopUnit(filteredData) {
@@ -210,31 +377,61 @@ function calcTopUnit(filteredData) {
   return { name: top[0], count: top[1] };
 }
 
-function buildChartsByDimension(filteredData, bgColor, borderColor) {
+function buildChartsByDimension(filteredData, bgColor, borderColor, selectedFilters) {
   if (!dimensionMapping) return [];
-  return Object.entries(dimensionMapping).map(([dimensionName, questionKeys]) => {
-    const dataPoints = questionKeys.map((key) => {
-      const scores = (filteredData || [])
-        .map((item) => ratingToScore[item[key]])
-        .filter((v) => v !== null && v !== undefined);
-      if (!scores.length) return 0;
-      return Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2));
-    });
 
-    return {
-      dimensionName,
-      chartData: {
-        labels: questionKeys,
-        datasets: [
-          {
-            label: 'Média',
-            data: dataPoints,
-            backgroundColor: bgColor,
-            borderColor: borderColor,
-            borderWidth: 1,
-          },
-        ],
-      },
-    };
+  const selectedDim = selectedFilters?.dimensao || 'todas';
+  const selectedQuestion = selectedFilters?.pergunta || 'todas';
+
+  const dims = Object.entries(dimensionMapping).filter(([dimensionName]) => {
+    if (!selectedDim || selectedDim === 'todas') return true;
+    return dimensionName === selectedDim;
   });
+
+  const charts = dims
+    .map(([dimensionName, questionKeys]) => {
+      let keys = Array.isArray(questionKeys) ? [...questionKeys] : [];
+
+      if (selectedQuestion && selectedQuestion !== 'todas') {
+        keys = keys.includes(selectedQuestion) ? [selectedQuestion] : [];
+      }
+
+      if (!keys.length) return null;
+
+      const labels = [];
+      const data = [];
+
+      for (const key of keys) {
+        const scores = (filteredData || [])
+          .map((item) => ratingToScore[item[key]])
+          .filter((v) => v !== null && v !== undefined);
+
+        if (!scores.length) continue;
+
+        const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+        labels.push(key);
+        data.push(Number(avg.toFixed(2)));
+      }
+
+      if (!labels.length) return null;
+
+      return {
+        dimensionName,
+        chartData: {
+          labels,
+          datasets: [
+            {
+              label: 'Média',
+              data,
+              backgroundColor: bgColor,
+              borderColor: borderColor,
+              borderWidth: 1,
+            },
+          ],
+        },
+      };
+    })
+    .filter(Boolean);
+
+  return charts;
 }

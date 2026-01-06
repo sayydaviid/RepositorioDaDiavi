@@ -24,9 +24,6 @@ export default function DocentePage() {
   const [selectedFiltersA, setSelectedFiltersA] = useState(DEFAULT_FILTERS);
   const [selectedFiltersB, setSelectedFiltersB] = useState(DEFAULT_FILTERS);
 
-  /* =====================================================
-     Carregamento inicial
-  ===================================================== */
   useEffect(() => {
     fetch('/api/docente')
       .then((res) => (res.ok ? res.json() : Promise.reject('Falha ao buscar dados')))
@@ -34,40 +31,39 @@ export default function DocentePage() {
         const teacherData = data[2]?.data || data;
         setAllData(Array.isArray(teacherData) ? teacherData : []);
       })
-      .catch((error) => console.error('Não foi possível carregar os dados dos docentes:', error));
+      .catch((error) =>
+        console.error('Não foi possível carregar os dados dos docentes:', error)
+      );
   }, []);
 
-  /* =====================================================
-     Aplicação de filtros (A e B)
-  ===================================================== */
-  const filteredDataA = useMemo(() => applyFiltersDocente(allData, selectedFiltersA), [allData, selectedFiltersA]);
-  const filteredDataB = useMemo(() => applyFiltersDocente(allData, selectedFiltersB), [allData, selectedFiltersB]);
+  // Filtragem base (lotacao/cargo)
+  const filteredDataA = useMemo(
+    () => applyFiltersDocente(allData, selectedFiltersA),
+    [allData, selectedFiltersA]
+  );
+  const filteredDataB = useMemo(
+    () => applyFiltersDocente(allData, selectedFiltersB),
+    [allData, selectedFiltersB]
+  );
 
-  /* =====================================================
-     Opções de filtros em cascata (A e B)
-  ===================================================== */
+  // Opções em cascata
   const filterOptionsA = useMemo(
     () => buildDocenteFilterOptions(allData, selectedFiltersA),
     [allData, selectedFiltersA.lotacao, selectedFiltersA.cargo]
   );
-
   const filterOptionsB = useMemo(
     () => buildDocenteFilterOptions(allData, selectedFiltersB),
     [allData, selectedFiltersB.lotacao, selectedFiltersB.cargo]
   );
 
-  /* =====================================================
-     Estatística: top lotação (A e B)
-  ===================================================== */
   const topLotacaoA = useMemo(() => calcTopLotacao(filteredDataA), [filteredDataA]);
   const topLotacaoB = useMemo(() => calcTopLotacao(filteredDataB), [filteredDataB]);
 
-  /* =====================================================
-     Handle filters (A e B)
-  ===================================================== */
+  // Handle filters
   const handleFilterChangeA = (e) => {
     const { name, value } = e.target;
 
+    // Mantém coerência Dimensão -> Pergunta
     if (name === 'dimensao') {
       setSelectedFiltersA((prev) => ({ ...prev, dimensao: value, pergunta: 'todas' }));
       return;
@@ -85,21 +81,28 @@ export default function DocentePage() {
     setSelectedFiltersB((prev) => ({ ...prev, [name]: value }));
   };
 
-  /* =====================================================
-     GRÁFICOS POR DIMENSÃO (A e B)
-     Regra:
-       - Se selectedFiltersX.dimensao !== 'todas', mostra só aquela dimensão
-       - Caso contrário, mostra todas
-  ===================================================== */
+  // Gráficos (agora respeitam dimensão + pergunta)
   const chartsByDimensionA = useMemo(
-    () => buildChartsByDimensionDocente(filteredDataA, selectedFiltersA.dimensao),
-    [filteredDataA, selectedFiltersA.dimensao]
+    () => buildChartsByDimensionDocente(filteredDataA, selectedFiltersA, false),
+    [filteredDataA, selectedFiltersA]
   );
 
   const chartsByDimensionB = useMemo(
-    () => buildChartsByDimensionDocente(filteredDataB, selectedFiltersB.dimensao, true),
-    [filteredDataB, selectedFiltersB.dimensao]
+    () => buildChartsByDimensionDocente(filteredDataB, selectedFiltersB, true),
+    [filteredDataB, selectedFiltersB]
   );
+
+  // Mapa p/ parear dimensões por nome (robusto)
+  const bMap = useMemo(
+    () => new Map((chartsByDimensionB || []).map((c) => [c.dimensionName, c])),
+    [chartsByDimensionB]
+  );
+
+  // Mesmo “atalho” do Discente: se A e B têm 1 gráfico cada, renderiza lado a lado
+  const specialPairSideBySide =
+    compareEnabled &&
+    chartsByDimensionA.length === 1 &&
+    chartsByDimensionB.length === 1;
 
   return (
     <div className={styles.container}>
@@ -108,7 +111,6 @@ export default function DocentePage() {
         subtitle="Dados referentes ao questionário de autoavaliação"
       />
 
-      {/* Stats */}
       <div className={`${styles.statsGrid} ${compareEnabled ? styles.statsGridCompare : ''}`}>
         <StatCard
           title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'}
@@ -138,7 +140,6 @@ export default function DocentePage() {
         )}
       </div>
 
-      {/* Filters */}
       <div className={compareEnabled ? styles.filtersCompareGrid : styles.filtersSingle}>
         <DocenteFilters
           title={compareEnabled ? 'Filtros (A)' : 'Filtros'}
@@ -151,7 +152,10 @@ export default function DocentePage() {
           compareEnabled={compareEnabled}
           onCompareChange={(checked) => {
             setCompareEnabled(checked);
-            if (checked) setSelectedFiltersB(selectedFiltersA);
+            if (checked) {
+              // IMPORTANTE: clonar, não compartilhar referência
+              setSelectedFiltersB({ ...selectedFiltersA });
+            }
           }}
         />
 
@@ -167,35 +171,63 @@ export default function DocentePage() {
         )}
       </div>
 
-      {/* Charts */}
       <div className={styles.chartsMainContainer}>
         {compareEnabled ? (
-          // COMPARAÇÃO: par A/B por dimensão (igual Discente)
-          chartsByDimensionA.map(({ dimensionName, chartData }, index) => (
-            <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
+          specialPairSideBySide ? (
+            <section className={styles.dimensionWrapper}>
               <div className={styles.equalGrid}>
                 <div className={styles.chartContainerCard}>
                   <QuestionChart
-                    chartData={chartData}
-                    title={`${dimensionName} (A)`}
+                    chartData={chartsByDimensionA[0].chartData}
+                    title={`${chartsByDimensionA[0].dimensionName} (A)`}
                     questionMap={questionMappingDocente}
                   />
                 </div>
 
-                {chartsByDimensionB[index] && (
-                  <div className={styles.chartContainerCard}>
-                    <QuestionChart
-                      chartData={chartsByDimensionB[index].chartData}
-                      title={`${dimensionName} (B)`}
-                      questionMap={questionMappingDocente}
-                    />
-                  </div>
-                )}
+                <div className={styles.chartContainerCard}>
+                  <QuestionChart
+                    chartData={chartsByDimensionB[0].chartData}
+                    title={`${chartsByDimensionB[0].dimensionName} (B)`}
+                    questionMap={questionMappingDocente}
+                  />
+                </div>
               </div>
             </section>
-          ))
+          ) : (
+            // Pareia por dimensionName (não por index)
+            chartsByDimensionA.map(({ dimensionName, chartData }) => {
+              const b = bMap.get(dimensionName);
+
+              // Se B não tem essa dimensão, ainda renderiza A em largura total
+              return (
+                <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
+                  <div className={styles.equalGrid}>
+                    <div
+                      className={styles.chartContainerCard}
+                      style={!b ? { gridColumn: '1 / -1' } : undefined}
+                    >
+                      <QuestionChart
+                        chartData={chartData}
+                        title={`${dimensionName} (A)`}
+                        questionMap={questionMappingDocente}
+                      />
+                    </div>
+
+                    {b && (
+                      <div className={styles.chartContainerCard}>
+                        <QuestionChart
+                          chartData={b.chartData}
+                          title={`${dimensionName} (B)`}
+                          questionMap={questionMappingDocente}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })
+          )
         ) : (
-          // SEM COMPARAÇÃO: grid único 2 por linha
           <div className={styles.singleGrid}>
             {chartsByDimensionA.map(({ dimensionName, chartData }) => (
               <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
@@ -227,9 +259,6 @@ function applyFiltersDocente(allData, selectedFilters) {
   if (selectedFilters.cargo !== 'todos') {
     data = data.filter((d) => d.CARGO_DOCENTE === selectedFilters.cargo);
   }
-
-  // OBS: não filtramos por "pergunta" aqui; ela serve para o QuestionChart (se ele suportar)
-  // e para limitar as opções do select.
   return data;
 }
 
@@ -275,32 +304,55 @@ function calcTopLotacao(filteredData) {
   return `${top[0]} — ${top[1].toLocaleString('pt-BR')}`;
 }
 
-function buildChartsByDimensionDocente(filteredData, selectedDim = 'todas', isB = false) {
+/**
+ * Agora respeita:
+ * - selectedFilters.dimensao
+ * - selectedFilters.pergunta
+ * E remove perguntas sem dados (pra não ficar “0” que mascara diferença)
+ */
+function buildChartsByDimensionDocente(filteredData, selectedFilters, isB = false) {
   if (!dimensionMappingDocente) return [];
+
+  const selectedDim = selectedFilters?.dimensao || 'todas';
+  const selectedQuestion = selectedFilters?.pergunta || 'todas';
 
   const entries =
     selectedDim !== 'todas'
       ? [[selectedDim, dimensionMappingDocente[selectedDim] || []]]
       : Object.entries(dimensionMappingDocente);
 
-  // Mantém a mesma ordem de Object.entries para A e B (assumindo mesmo mapping)
   return entries
     .map(([dimensionName, questionKeys]) => {
-      const dataPoints = (questionKeys || []).map((key) => {
+      let keys = Array.isArray(questionKeys) ? [...questionKeys] : [];
+
+      // Se selecionou pergunta, reduz para ela (desde que pertença à dimensão)
+      if (selectedQuestion && selectedQuestion !== 'todas') {
+        keys = keys.includes(selectedQuestion) ? [selectedQuestion] : [];
+      }
+
+      if (!keys.length) return null;
+
+      const labels = [];
+      const dataPoints = [];
+
+      for (const key of keys) {
         const scores = (filteredData || [])
           .map((item) => ratingToScore[item[key]])
           .filter((v) => v !== null && v !== undefined);
 
-        if (!scores.length) return 0;
+        if (!scores.length) continue; 
 
         const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-        return Number(avg.toFixed(2));
-      });
+        labels.push(key);
+        dataPoints.push(Number(avg.toFixed(2)));
+      }
+
+      if (!labels.length) return null; 
 
       return {
         dimensionName,
         chartData: {
-          labels: questionKeys,
+          labels,
           datasets: [
             {
               label: 'Média de Respostas',
@@ -313,5 +365,5 @@ function buildChartsByDimensionDocente(filteredData, selectedDim = 'todas', isB 
         },
       };
     })
-    .filter((d) => d.chartData.labels && d.chartData.labels.length > 0);
+    .filter(Boolean);
 }

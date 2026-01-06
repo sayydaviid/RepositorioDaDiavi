@@ -25,9 +25,6 @@ export default function TecnicoPage() {
   const [selectedFiltersA, setSelectedFiltersA] = useState(DEFAULT_FILTERS);
   const [selectedFiltersB, setSelectedFiltersB] = useState(DEFAULT_FILTERS);
 
-  /* =====================================================
-     Carregamento inicial
-  ===================================================== */
   useEffect(() => {
     fetch('/api/tecnico')
       .then((res) => (res.ok ? res.json() : Promise.reject('Falha ao buscar dados')))
@@ -35,7 +32,9 @@ export default function TecnicoPage() {
         const tecnicoData = data[2]?.data || data;
         setAllData(Array.isArray(tecnicoData) ? tecnicoData : []);
       })
-      .catch((error) => console.error('Não foi possível carregar os dados dos técnicos:', error));
+      .catch((error) =>
+        console.error('Não foi possível carregar os dados dos técnicos:', error)
+      );
   }, []);
 
   /* =====================================================
@@ -45,7 +44,12 @@ export default function TecnicoPage() {
     const { name, value } = e.target;
 
     if (name === 'lotacao') {
-      setSelectedFiltersA((prev) => ({ ...prev, lotacao: value, exercicio: 'todos', cargo: 'todos' }));
+      setSelectedFiltersA((prev) => ({
+        ...prev,
+        lotacao: value,
+        exercicio: 'todos',
+        cargo: 'todos',
+      }));
       return;
     }
     if (name === 'exercicio') {
@@ -63,7 +67,12 @@ export default function TecnicoPage() {
     const { name, value } = e.target;
 
     if (name === 'lotacao') {
-      setSelectedFiltersB((prev) => ({ ...prev, lotacao: value, exercicio: 'todos', cargo: 'todos' }));
+      setSelectedFiltersB((prev) => ({
+        ...prev,
+        lotacao: value,
+        exercicio: 'todos',
+        cargo: 'todos',
+      }));
       return;
     }
     if (name === 'exercicio') {
@@ -78,46 +87,55 @@ export default function TecnicoPage() {
   };
 
   /* =====================================================
-     Aplicação dos filtros (A e B): lotacao/exercicio/cargo
+     Aplicação dos filtros (A e B)
   ===================================================== */
-  const filteredDataA = useMemo(() => applyFiltersTecnico(allData, selectedFiltersA), [allData, selectedFiltersA]);
-  const filteredDataB = useMemo(() => applyFiltersTecnico(allData, selectedFiltersB), [allData, selectedFiltersB]);
+  const filteredDataA = useMemo(
+    () => applyFiltersTecnico(allData, selectedFiltersA),
+    [allData, selectedFiltersA]
+  );
+  const filteredDataB = useMemo(
+    () => applyFiltersTecnico(allData, selectedFiltersB),
+    [allData, selectedFiltersB]
+  );
 
   /* =====================================================
      Opções dos filtros em cascata (A e B)
   ===================================================== */
-  const filterOptionsA = useMemo(() => buildTecnicoFilterOptions(allData, selectedFiltersA), [allData, selectedFiltersA]);
-  const filterOptionsB = useMemo(() => buildTecnicoFilterOptions(allData, selectedFiltersB), [allData, selectedFiltersB]);
+  const filterOptionsA = useMemo(
+    () => buildTecnicoFilterOptions(allData, selectedFiltersA),
+    [allData, selectedFiltersA]
+  );
+  const filterOptionsB = useMemo(
+    () => buildTecnicoFilterOptions(allData, selectedFiltersB),
+    [allData, selectedFiltersB]
+  );
 
-  /* =====================================================
-     Estatística: top lotação (A e B)
-  ===================================================== */
   const topLotacaoA = useMemo(() => calcTopLotacaoTecnico(filteredDataA), [filteredDataA]);
   const topLotacaoB = useMemo(() => calcTopLotacaoTecnico(filteredDataB), [filteredDataB]);
 
   /* =====================================================
      Gráficos (A e B)
-     Regras:
-       - pergunta != todas -> 1 gráfico (pergunta)
-       - senão, dimensao != todas -> 1 dimensão
-       - senão -> todas as dimensões
   ===================================================== */
   const chartsA = useMemo(
-    () => buildChartsTecnico(filteredDataA, selectedFiltersA),
-    [filteredDataA, selectedFiltersA.pergunta, selectedFiltersA.dimensao]
+    () => buildChartsTecnico(filteredDataA, selectedFiltersA, false),
+    [filteredDataA, selectedFiltersA]
   );
 
   const chartsB = useMemo(
     () => buildChartsTecnico(filteredDataB, selectedFiltersB, true),
-    [filteredDataB, selectedFiltersB.pergunta, selectedFiltersB.dimensao]
+    [filteredDataB, selectedFiltersB]
   );
 
-  // Map por nome (pareamento robusto no modo comparação)
+  // Pareamento robusto por nome
   const chartsBByName = useMemo(() => {
     const m = new Map();
     for (const c of chartsB) m.set(c.dimensionName, c);
     return m;
   }, [chartsB]);
+
+  // Caso especial: 1 gráfico em A e 1 em B => lado a lado
+  const specialPairSideBySide =
+    compareEnabled && chartsA.length === 1 && chartsB.length === 1;
 
   return (
     <div className={styles.container}>
@@ -126,7 +144,6 @@ export default function TecnicoPage() {
         subtitle="Dados referentes ao questionário de autoavaliação"
       />
 
-      {/* Stats */}
       <div className={`${styles.statsGrid} ${compareEnabled ? styles.statsGridCompare : ''}`}>
         <StatCard
           title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'}
@@ -155,7 +172,6 @@ export default function TecnicoPage() {
         )}
       </div>
 
-      {/* Filters */}
       <div className={compareEnabled ? styles.filtersCompareGrid : styles.filtersSingle}>
         <TecnicoFilters
           title={compareEnabled ? 'Filtros (A)' : 'Filtros'}
@@ -168,7 +184,10 @@ export default function TecnicoPage() {
           compareEnabled={compareEnabled}
           onCompareChange={(checked) => {
             setCompareEnabled(checked);
-            if (checked) setSelectedFiltersB(selectedFiltersA);
+            if (checked) {
+              // IMPORTANTE: clonar para não compartilhar referência
+              setSelectedFiltersB({ ...selectedFiltersA });
+            }
           }}
         />
 
@@ -184,36 +203,61 @@ export default function TecnicoPage() {
         )}
       </div>
 
-      {/* Charts */}
       <div className={styles.chartsMainContainer}>
         {compareEnabled ? (
-          // COMPARAÇÃO: A/B por bloco (pareado por dimensionName)
-          chartsA.map(({ dimensionName, chartData }) => {
-            const chartB = chartsBByName.get(dimensionName);
-            return (
-              <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
-                <div className={styles.equalGrid}>
-                  <div className={styles.chartContainerCard}>
-                    <QuestionChart
-                      chartData={chartData}
-                      title={`${dimensionName} (A)`}
-                      questionMap={questionMappingTecnico}
-                    />
-                  </div>
-
-                  <div className={styles.chartContainerCard}>
-                    <QuestionChart
-                      chartData={chartB?.chartData || emptyChartLike(chartData)}
-                      title={`${dimensionName} (B)`}
-                      questionMap={questionMappingTecnico}
-                    />
-                  </div>
+          specialPairSideBySide ? (
+            <section className={styles.dimensionWrapper}>
+              <div className={styles.equalGrid}>
+                <div className={styles.chartContainerCard}>
+                  <QuestionChart
+                    chartData={chartsA[0].chartData}
+                    title={`${chartsA[0].dimensionName} (A)`}
+                    questionMap={questionMappingTecnico}
+                  />
                 </div>
-              </section>
-            );
-          })
+
+                <div className={styles.chartContainerCard}>
+                  <QuestionChart
+                    chartData={chartsB[0].chartData}
+                    title={`${chartsB[0].dimensionName} (B)`}
+                    questionMap={questionMappingTecnico}
+                  />
+                </div>
+              </div>
+            </section>
+          ) : (
+            chartsA.map(({ dimensionName, chartData }) => {
+              const chartB = chartsBByName.get(dimensionName);
+
+              return (
+                <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
+                  <div className={styles.equalGrid}>
+                    <div
+                      className={styles.chartContainerCard}
+                      style={!chartB ? { gridColumn: '1 / -1' } : undefined}
+                    >
+                      <QuestionChart
+                        chartData={chartData}
+                        title={`${dimensionName} (A)`}
+                        questionMap={questionMappingTecnico}
+                      />
+                    </div>
+
+                    {chartB && (
+                      <div className={styles.chartContainerCard}>
+                        <QuestionChart
+                          chartData={chartB.chartData}
+                          title={`${dimensionName} (B)`}
+                          questionMap={questionMappingTecnico}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })
+          )
         ) : (
-          // SEM COMPARAÇÃO: grid único 2 por linha
           <div className={styles.singleGrid}>
             {chartsA.map(({ dimensionName, chartData }) => (
               <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
@@ -302,7 +346,10 @@ function calcTopLotacaoTecnico(filteredData) {
 function buildChartsTecnico(filteredData, selectedFilters, isB = false) {
   if (!questionMappingTecnico || !dimensionMappingTecnico) return [];
 
-  // Caso 1: pergunta específica
+  const bg = isB ? 'rgba(54, 162, 235, 0.8)' : 'rgba(255, 142, 41, 0.8)';
+  const border = isB ? 'rgba(54, 162, 235, 1)' : 'rgba(255, 142, 41, 1)';
+
+  // Caso 1: pergunta específica (IMPORTANTE: nome fixo para parear A/B)
   if (selectedFilters.pergunta !== 'todas') {
     const key = selectedFilters.pergunta;
 
@@ -316,15 +363,15 @@ function buildChartsTecnico(filteredData, selectedFilters, isB = false) {
 
     return [
       {
-        dimensionName: `Pergunta ${key}`,
+        dimensionName: 'Pergunta (selecionada)', // <- fixo para comparação funcionar
         chartData: {
           labels: [key],
           datasets: [
             {
               label: 'Média de Respostas',
               data: [avg],
-              backgroundColor: isB ? 'rgba(54, 162, 235, 0.8)' : 'rgba(255, 142, 41, 0.8)',
-              borderColor: isB ? 'rgba(54, 162, 235, 1)' : 'rgba(255, 142, 41, 1)',
+              backgroundColor: bg,
+              borderColor: border,
               borderWidth: 1,
             },
           ],
@@ -340,48 +387,38 @@ function buildChartsTecnico(filteredData, selectedFilters, isB = false) {
 
   return entries
     .map(([dimensionName, questionKeys]) => {
-      const dataPoints = (questionKeys || []).map((key) => {
+      const labels = [];
+      const dataPoints = [];
+
+      for (const key of questionKeys || []) {
         const scores = (filteredData || [])
           .map((item) => ratingToScore[item[key]])
           .filter((v) => v !== null && v !== undefined);
 
-        if (!scores.length) return 0;
-
+        if (!scores.length) continue; // remove perguntas sem dados (evita “zeros” mascarando)
         const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-        return Number(avg.toFixed(2));
-      });
+
+        labels.push(key);
+        dataPoints.push(Number(avg.toFixed(2)));
+      }
+
+      if (!labels.length) return null;
 
       return {
         dimensionName,
         chartData: {
-          labels: questionKeys,
+          labels,
           datasets: [
             {
               label: 'Média de Respostas',
               data: dataPoints,
-              backgroundColor: isB ? 'rgba(54, 162, 235, 0.8)' : 'rgba(255, 142, 41, 0.8)',
-              borderColor: isB ? 'rgba(54, 162, 235, 1)' : 'rgba(255, 142, 41, 1)',
+              backgroundColor: bg,
+              borderColor: border,
               borderWidth: 1,
             },
           ],
         },
       };
     })
-    .filter((d) => d.chartData.labels && d.chartData.labels.length > 0);
-}
-
-// Gera um “chart vazio” compatível (quando B não tem aquela dimensão)
-function emptyChartLike(referenceChartData) {
-  return {
-    labels: referenceChartData?.labels || [],
-    datasets: [
-      {
-        label: 'Média de Respostas',
-        data: (referenceChartData?.labels || []).map(() => 0),
-        backgroundColor: 'rgba(54, 162, 235, 0.15)',
-        borderColor: 'rgba(54, 162, 235, 0.35)',
-        borderWidth: 1,
-      },
-    ],
-  };
+    .filter(Boolean);
 }

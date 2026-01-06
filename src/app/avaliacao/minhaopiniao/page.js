@@ -1,10 +1,54 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import styles from '../../../styles/page.module.css';
+import { prefetchJSON } from '../lib/prefetchCache'; // ajuste se necessário
 
 export default function MinhaOpiniaoPage() {
+  const router = useRouter();
+
+  // Ajuste as rotas de API reais que cada página consome
+  const apiByRoute = {
+    '/avaliacao/minhaopiniao/discente': ['/api/discente'],
+    '/avaliacao/minhaopiniao/docente': ['/api/docente'],
+    '/avaliacao/minhaopiniao/tecnico': ['/api/tecnico'],
+  };
+
+  const prefetchFor = useCallback(
+    (href) => {
+      // 1) Prefetch do bundle/rota (Next)
+      router.prefetch(href);
+
+      // 2) Prefetch do(s) endpoint(s) que essa rota usa
+      const urls = apiByRoute[href] || [];
+      for (const url of urls) {
+        prefetchJSON(url).catch(() => {});
+      }
+    },
+    [router]
+  );
+
+  const onNavigate = useCallback(
+    (e, href) => {
+      e.preventDefault();
+      prefetchFor(href);
+      router.push(href);
+    },
+    [prefetchFor, router]
+  );
+
+  const makeLinkProps = (href) => ({
+    href,
+    prefetch: true,
+    className: styles.ctaPrimary,
+    onMouseEnter: () => prefetchFor(href),
+    onFocus: () => prefetchFor(href),
+    onTouchStart: () => prefetchFor(href), // mobile
+    onClick: (e) => onNavigate(e, href),
+  });
+
   return (
     <section className={styles.wrapper}>
       <header className={styles.hero}>
@@ -30,24 +74,15 @@ export default function MinhaOpiniaoPage() {
           </p>
 
           <div className={styles.ctaGroup}>
-            <Link
-              href="/avaliacao/minhaopiniao/discente"
-              className={styles.ctaPrimary}
-            >
+            <Link {...makeLinkProps('/avaliacao/minhaopiniao/discente')}>
               Discente
             </Link>
 
-            <Link
-              href="/avaliacao/minhaopiniao/docente"
-              className={styles.ctaPrimary}
-            >
+            <Link {...makeLinkProps('/avaliacao/minhaopiniao/docente')}>
               Docente
             </Link>
 
-            <Link
-              href="/avaliacao/minhaopiniao/tecnico"
-              className={styles.ctaPrimary}
-            >
+            <Link {...makeLinkProps('/avaliacao/minhaopiniao/tecnico')}>
               Técnico
             </Link>
           </div>
@@ -62,8 +97,6 @@ export default function MinhaOpiniaoPage() {
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
-
-
             {/* Gráfico */}
             <rect x="90" y="180" width="30" height="80" rx="6" fill="#6B5BCE" />
             <rect x="140" y="150" width="30" height="110" rx="6" fill="#8B7CF0" />
@@ -73,7 +106,6 @@ export default function MinhaOpiniaoPage() {
 
             {/* Linha de base */}
             <rect x="80" y="260" width="260" height="4" rx="2" fill="#9CA3AF" />
-
           </svg>
         </div>
       </header>
