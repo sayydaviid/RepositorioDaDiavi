@@ -5,25 +5,35 @@ import { promises as fs } from 'fs';
 
 export async function GET() {
   try {
-    // 1. Define o caminho seguro para o seu arquivo JSON
-    // process.cwd() aponta para a raiz do seu projeto
     const filePath = path.join(process.cwd(), 'src', 'app', 'banco', 'DISCENTE.json');
 
-    // 2. Lê o conteúdo do arquivo no servidor
-    const fileContents = await fs.readFile(filePath, 'utf8');
+    // 1. Lê o arquivo como BUFFER (binário), não como string UTF-8
+    // Isso é muito mais rápido e gasta menos memória
+    const fileBuffer = await fs.readFile(filePath);
 
-    // 3. Converte o conteúdo em um objeto JSON
-    const data = JSON.parse(fileContents);
-
-    // 4. Envia os dados como resposta para quem pediu (sua página)
-    return NextResponse.json(data);
+    // 2. Retorna uma NextResponse manual
+    // EVITAMOS o JSON.parse() e o NextResponse.json()
+    // Por que? Porque o arquivo já é um JSON. Não precisamos carregar na memória do servidor
+    // como objeto para depois transformar em texto de novo. Enviamos o "puro" do disco.
+    return new NextResponse(fileBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        // 3. ESSENCIAL: Envia o tamanho total para a barra de progresso do frontend
+        'Content-Length': fileBuffer.length.toString(),
+        // Dica: Next.js em produção (Vercel/Node) aplicará Gzip/Brotli automaticamente 
+        // sobre este buffer se o navegador suportar.
+      },
+    });
 
   } catch (error) {
     console.error("Erro ao ler o arquivo de dados:", error);
-    // Em caso de erro, envia uma resposta com status 500 (Erro Interno do Servidor)
     return new NextResponse(
       JSON.stringify({ message: "Erro ao carregar os dados." }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { 
+        status: 500, 
+        headers: { 'Content-Type': 'application/json' } 
+      }
     );
   }
 }

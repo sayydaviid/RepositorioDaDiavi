@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Building2 } from 'lucide-react';
+import { Users, Building2, Loader2 } from 'lucide-react';
 
 // Componentes
 import Header from '../components/Header';
@@ -22,66 +22,171 @@ const DEFAULT_FILTERS = {
   dimensao: 'todas',
 };
 
+/* ==========================================================================
+   Componente de Loading Overlay (Bloqueio de Tela com Progresso)
+   ========================================================================== */
+function LoadingOverlay({ progress }) {
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      backgroundColor: 'rgba(255, 255, 255, 0.98)',
+      zIndex: 9999,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backdropFilter: 'blur(10px)'
+    }}>
+      <div style={{ width: '350px', textAlign: 'center', padding: '2rem' }}>
+        <Loader2 
+          style={{ 
+            width: '48px', 
+            height: '48px', 
+            color: '#FF8E29', 
+            marginBottom: '1.5rem',
+            animation: 'spin 1s linear infinite' 
+          }} 
+        />
+        <h2 style={{ fontSize: '1.5rem', color: '#1a1a1a', marginBottom: '0.5rem', fontWeight: '700' }}>
+          Carregando Dados
+        </h2>
+        <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1rem' }}>
+          Preparando análise institucional...
+        </p>
+        
+        {/* Barra de Progresso */}
+        <div style={{ 
+          width: '100%', 
+          height: '12px', 
+          backgroundColor: '#f0f0f0', 
+          borderRadius: '10px', 
+          overflow: 'hidden',
+          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)'
+        }}>
+          <div style={{ 
+            width: `${progress}%`, 
+            height: '100%', 
+            backgroundColor: '#FF8E29', 
+            transition: 'width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1)',
+            backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%, transparent)',
+            backgroundSize: '1rem 1rem'
+          }} />
+        </div>
+        
+        <div style={{ 
+          marginTop: '12px', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          fontSize: '0.9rem', 
+          fontWeight: '600',
+          color: '#FF8E29' 
+        }}>
+          <span>{progress < 100 ? 'Baixando...' : 'Processando...'}</span>
+          <span>{progress}%</span>
+        </div>
+      </div>
+      <style jsx global>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
+    </div>
+  );
+}
+
 export default function DiscentePage() {
   const [allData, setAllData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState(0);
   const [compareEnabled, setCompareEnabled] = useState(false);
 
   const [selectedFiltersA, setSelectedFiltersA] = useState(DEFAULT_FILTERS);
   const [selectedFiltersB, setSelectedFiltersB] = useState(DEFAULT_FILTERS);
 
   useEffect(() => {
-    fetch('/api/discente')
-      .then((res) => res.json())
-      .then((data) => {
+    async function loadData() {
+      try {
+        const response = await fetch('/api/discente');
+        if (!response.ok) throw new Error('Falha ao buscar dados');
+
+        const contentLength = response.headers.get('Content-Length');
+        const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
+        
+        const reader = response.body.getReader();
+        let loadedSize = 0;
+        let chunks = [];
+
+        // Loop de leitura do stream
+        while(true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          chunks.push(value);
+          loadedSize += value.length;
+          
+          if (totalSize > 0) {
+            const p = Math.round((loadedSize / totalSize) * 100);
+            setProgress(p);
+          }
+        }
+
+        // Unificando os pedaços (Uint8Array)
+        const allChunks = new Uint8Array(loadedSize);
+        let position = 0;
+        for(let chunk of chunks) {
+          allChunks.set(chunk, position);
+          position += chunk.length;
+        }
+
+        // Decodificando e convertendo para objeto
+        const decodedString = new TextDecoder("utf-8").decode(allChunks);
+        const data = JSON.parse(decodedString);
+        
         const studentData = data[2]?.data || data;
         setAllData(studentData || []);
-      })
-      .catch((err) => console.error('Erro ao carregar dados:', err));
+        
+        // Pequeno delay para suavizar a transição após o 100%
+        setTimeout(() => setLoading(false), 600);
+      } catch (err) {
+        console.error('Erro ao carregar dados:', err);
+        setLoading(false);
+      }
+    }
+
+    loadData();
   }, []);
 
-  // Dados filtrados (somente campus/unidade/curso)
-  const filteredDataA = useMemo(
-    () => applyFilters(allData, selectedFiltersA),
-    [allData, selectedFiltersA]
-  );
-  const filteredDataB = useMemo(
-    () => applyFilters(allData, selectedFiltersB),
-    [allData, selectedFiltersB]
-  );
+  /* =========================
+     Cálculos Otimizados (Memoized)
+  ========================= */
+  const filteredDataA = useMemo(() => 
+    loading ? [] : applyFilters(allData, selectedFiltersA), 
+  [allData, selectedFiltersA, loading]);
 
-  // Opções dependentes (NUNCA deixam o usuário escolher algo que vira 0)
-  const filterOptionsA = useMemo(
-    () => buildFilterOptions(allData, selectedFiltersA),
-    [allData, selectedFiltersA]
-  );
-  const filterOptionsB = useMemo(
-    () => buildFilterOptions(allData, selectedFiltersB),
-    [allData, selectedFiltersB]
-  );
+  const filteredDataB = useMemo(() => 
+    loading ? [] : applyFilters(allData, selectedFiltersB), 
+  [allData, selectedFiltersB, loading]);
+
+  const filterOptionsA = useMemo(() => 
+    buildFilterOptions(allData, selectedFiltersA), 
+  [allData, selectedFiltersA]);
+
+  const filterOptionsB = useMemo(() => 
+    buildFilterOptions(allData, selectedFiltersB), 
+  [allData, selectedFiltersB]);
 
   const topUnitA = useMemo(() => calcTopUnit(filteredDataA), [filteredDataA]);
   const topUnitB = useMemo(() => calcTopUnit(filteredDataB), [filteredDataB]);
 
-  // Gráficos (já respeitando dimensão/pergunta selecionadas e removendo vazios)
-  const chartsByDimensionA = useMemo(
-    () =>
-      buildChartsByDimension(
-        filteredDataA,
-        'rgba(255, 142, 41, 0.8)',
-        'rgba(255, 142, 41, 1)',
-        selectedFiltersA
-      ),
+  const chartsByDimensionA = useMemo(() =>
+    buildChartsByDimension(filteredDataA, 'rgba(255, 142, 41, 0.8)', 'rgba(255, 142, 41, 1)', selectedFiltersA),
     [filteredDataA, selectedFiltersA]
   );
 
-  const chartsByDimensionB = useMemo(
-    () =>
-      buildChartsByDimension(
-        filteredDataB,
-        'rgba(54, 162, 235, 0.8)',
-        'rgba(54, 162, 235, 1)',
-        selectedFiltersB
-      ),
+  const chartsByDimensionB = useMemo(() =>
+    buildChartsByDimension(filteredDataB, 'rgba(54, 162, 235, 0.8)', 'rgba(54, 162, 235, 1)', selectedFiltersB),
     [filteredDataB, selectedFiltersB]
   );
 
@@ -95,149 +200,142 @@ export default function DiscentePage() {
     setSelectedFiltersB((prev) => sanitizeFilters(allData, { ...prev, [name]: value }));
   };
 
-  /**
-   * CORREÇÃO:
-   * Se A e B tiverem exatamente 1 gráfico cada, sempre renderiza lado a lado.
-   * Isso evita o caso em que A escolhe uma dimensão e B escolhe outra e os gráficos
-   * ficam um embaixo do outro por causa do CompareDimensions (que “une dimensões”).
-   */
-  const specialPairSideBySide =
-    compareEnabled &&
-    chartsByDimensionA.length === 1 &&
-    chartsByDimensionB.length === 1;
+  const specialPairSideBySide = compareEnabled && chartsByDimensionA.length === 1 && chartsByDimensionB.length === 1;
 
   return (
     <div className={styles.container}>
+      {/* 1. Bloqueio e Progresso */}
+      {loading && <LoadingOverlay progress={progress} />}
+
       <Header
         title="Análise de Respostas dos Discentes"
         subtitle="Dados referentes ao questionário 'Minha Opinião'"
       />
 
-      {/* Stats Section */}
-      <div className={`${styles.statsGrid} ${compareEnabled ? styles.statsGridCompare : ''}`}>
-        <StatCard
-          title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'}
-          value={filteredDataA.length.toLocaleString('pt-BR')}
-          icon={<Users />}
-        />
-        <StatCard
-          title={compareEnabled ? 'Top Unidade (A)' : 'Unidade com mais participantes'}
-          value={`${topUnitA.name} — ${topUnitA.count.toLocaleString('pt-BR')}`}
-          icon={<Building2 />}
-        />
+      {/* Container Principal com efeito de fade ao carregar */}
+      <div style={{ 
+        opacity: loading ? 0 : 1, 
+        transition: 'opacity 0.8s ease-in-out',
+        pointerEvents: loading ? 'none' : 'auto' 
+      }}>
+        
+        {/* Stats Section */}
+        <div className={`${styles.statsGrid} ${compareEnabled ? styles.statsGridCompare : ''}`}>
+          <StatCard
+            title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'}
+            value={filteredDataA.length.toLocaleString('pt-BR')}
+            icon={<Users />}
+          />
+          <StatCard
+            title={compareEnabled ? 'Top Unidade (A)' : 'Unidade com mais participantes'}
+            value={`${topUnitA.name} — ${topUnitA.count.toLocaleString('pt-BR')}`}
+            icon={<Building2 />}
+          />
 
-        {compareEnabled && (
-          <>
-            <StatCard
-              title="Total Participantes (B)"
-              value={filteredDataB.length.toLocaleString('pt-BR')}
-              icon={<Users />}
-            />
-            <StatCard
-              title="Top Unidade (B)"
-              value={`${topUnitB.name} — ${topUnitB.count.toLocaleString('pt-BR')}`}
-              icon={<Building2 />}
-            />
-          </>
-        )}
-      </div>
+          {compareEnabled && (
+            <>
+              <StatCard
+                title="Total Participantes (B)"
+                value={filteredDataB.length.toLocaleString('pt-BR')}
+                icon={<Users />}
+              />
+              <StatCard
+                title="Top Unidade (B)"
+                value={`${topUnitB.name} — ${topUnitB.count.toLocaleString('pt-BR')}`}
+                icon={<Building2 />}
+              />
+            </>
+          )}
+        </div>
 
-      {/* Filters Section */}
-      <div className={compareEnabled ? styles.filtersCompareGrid : styles.filtersSingle}>
-        <DiscenteFilters
-          title={compareEnabled ? 'Filtros (A)' : 'Filtros'}
-          filters={filterOptionsA}
-          selectedFilters={selectedFiltersA}
-          onFilterChange={handleFilterChangeA}
-          questionMap={questionMapping}
-          dimensionMap={dimensionMapping}
-          showCompareToggle
-          compareEnabled={compareEnabled}
-          onCompareChange={(checked) => {
-            setCompareEnabled(checked);
-            if (checked) setSelectedFiltersB(sanitizeFilters(allData, { ...selectedFiltersA }));
-          }}
-        />
-
-        {compareEnabled && (
+        {/* Filters Section */}
+        <div className={compareEnabled ? styles.filtersCompareGrid : styles.filtersSingle}>
           <DiscenteFilters
-            title="Filtros (B)"
-            filters={filterOptionsB}
-            selectedFilters={selectedFiltersB}
-            onFilterChange={handleFilterChangeB}
+            title={compareEnabled ? 'Filtros (A)' : 'Filtros'}
+            filters={filterOptionsA}
+            selectedFilters={selectedFiltersA}
+            onFilterChange={handleFilterChangeA}
             questionMap={questionMapping}
             dimensionMap={dimensionMapping}
+            showCompareToggle
+            compareEnabled={compareEnabled}
+            onCompareChange={(checked) => {
+              setCompareEnabled(checked);
+              if (checked) setSelectedFiltersB(sanitizeFilters(allData, { ...selectedFiltersA }));
+            }}
           />
-        )}
-      </div>
 
-      {/* Main Charts Section */}
-      <div className={styles.chartsMainContainer}>
-        {compareEnabled ? (
-          specialPairSideBySide ? (
-            // Agora: sempre lado a lado quando A e B têm 1 gráfico cada
-            <section className={styles.dimensionWrapper}>
-              <div className={styles.equalGrid}>
-                <div className={styles.chartContainerCard}>
-                  <QuestionChart
-                    chartData={chartsByDimensionA[0].chartData}
-                    title={`${chartsByDimensionA[0].dimensionName} (A)`}
-                    questionMap={questionMapping}
-                  />
-                </div>
-
-                <div className={styles.chartContainerCard}>
-                  <QuestionChart
-                    chartData={chartsByDimensionB[0].chartData}
-                    title={`${chartsByDimensionB[0].dimensionName} (B)`}
-                    questionMap={questionMapping}
-                  />
-                </div>
-              </div>
-            </section>
-          ) : (
-            // Comparação normal: une dimensões (sem renderizar “vazios”)
-            <CompareDimensions
-              chartsA={chartsByDimensionA}
-              chartsB={chartsByDimensionB}
+          {compareEnabled && (
+            <DiscenteFilters
+              title="Filtros (B)"
+              filters={filterOptionsB}
+              selectedFilters={selectedFiltersB}
+              onFilterChange={handleFilterChangeB}
               questionMap={questionMapping}
-              styles={styles}
+              dimensionMap={dimensionMapping}
             />
-          )
-        ) : (
-          // Sem comparação: grid normal (já filtrado por dimensão/pergunta)
-          <div className={styles.singleGrid}>
-            {chartsByDimensionA.map(({ dimensionName, chartData }) => (
-              <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
-                <QuestionChart
-                  chartData={chartData}
-                  title={dimensionName}
-                  questionMap={questionMapping}
-                />
-              </div>
-            ))}
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Opcional: estado vazio */}
-        {!compareEnabled && chartsByDimensionA.length === 0 && (
-          <div style={{ padding: 16, opacity: 0.75 }}>
-            Nenhum dado encontrado para os filtros selecionados.
-          </div>
-        )}
-        {compareEnabled && chartsByDimensionA.length === 0 && chartsByDimensionB.length === 0 && (
-          <div style={{ padding: 16, opacity: 0.75 }}>
-            Nenhum dado encontrado para os filtros selecionados.
-          </div>
-        )}
+        {/* Main Charts Section */}
+        <div className={styles.chartsMainContainer}>
+          {compareEnabled ? (
+            specialPairSideBySide ? (
+              <section className={styles.dimensionWrapper}>
+                <div className={styles.equalGrid}>
+                  <div className={styles.chartContainerCard}>
+                    <QuestionChart
+                      chartData={chartsByDimensionA[0].chartData}
+                      title={`${chartsByDimensionA[0].dimensionName} (A)`}
+                      questionMap={questionMapping}
+                    />
+                  </div>
+                  <div className={styles.chartContainerCard}>
+                    <QuestionChart
+                      chartData={chartsByDimensionB[0].chartData}
+                      title={`${chartsByDimensionB[0].dimensionName} (B)`}
+                      questionMap={questionMapping}
+                    />
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <CompareDimensions
+                chartsA={chartsByDimensionA}
+                chartsB={chartsByDimensionB}
+                questionMap={questionMapping}
+                styles={styles}
+              />
+            )
+          ) : (
+            <div className={styles.singleGrid}>
+              {chartsByDimensionA.map(({ dimensionName, chartData }) => (
+                <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
+                  <QuestionChart
+                    chartData={chartData}
+                    title={dimensionName}
+                    questionMap={questionMapping}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!compareEnabled && !loading && chartsByDimensionA.length === 0 && (
+            <div style={{ padding: 16, opacity: 0.75 }}>
+              Nenhum dado encontrado para os filtros selecionados.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-/* =========================
-   Render de comparação
-========================= */
+/* ==========================================================================
+   Funções de Auxiliares e Lógica de Renderização de Comparação
+   ========================================================================== */
+
 function CompareDimensions({ chartsA, chartsB, questionMap, styles }) {
   const aMap = new Map((chartsA || []).map((c) => [c.dimensionName, c]));
   const bMap = new Map((chartsB || []).map((c) => [c.dimensionName, c]));
@@ -248,35 +346,19 @@ function CompareDimensions({ chartsA, chartsB, questionMap, styles }) {
       {allNames.map((dimensionName) => {
         const a = aMap.get(dimensionName);
         const b = bMap.get(dimensionName);
-
         if (!a && !b) return null;
 
         return (
           <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
             <div className={styles.equalGrid}>
               {a && (
-                <div
-                  className={styles.chartContainerCard}
-                  style={!b ? { gridColumn: '1 / -1' } : undefined}
-                >
-                  <QuestionChart
-                    chartData={a.chartData}
-                    title={`${dimensionName} (A)`}
-                    questionMap={questionMap}
-                  />
+                <div className={styles.chartContainerCard} style={!b ? { gridColumn: '1 / -1' } : undefined}>
+                  <QuestionChart chartData={a.chartData} title={`${dimensionName} (A)`} questionMap={questionMap} />
                 </div>
               )}
-
               {b && (
-                <div
-                  className={styles.chartContainerCard}
-                  style={!a ? { gridColumn: '1 / -1' } : undefined}
-                >
-                  <QuestionChart
-                    chartData={b.chartData}
-                    title={`${dimensionName} (B)`}
-                    questionMap={questionMap}
-                  />
+                <div className={styles.chartContainerCard} style={!a ? { gridColumn: '1 / -1' } : undefined}>
+                  <QuestionChart chartData={b.chartData} title={`${dimensionName} (B)`} questionMap={questionMap} />
                 </div>
               )}
             </div>
@@ -287,151 +369,80 @@ function CompareDimensions({ chartsA, chartsB, questionMap, styles }) {
   );
 }
 
-/* =========================
-   Funções de apoio
-========================= */
-function norm(v) {
-  return String(v ?? '').trim();
-}
-
-function rowMatch(rowValue, selectedValue) {
-  return selectedValue === 'todos' || norm(rowValue) === norm(selectedValue);
-}
+function norm(v) { return String(v ?? '').trim(); }
+function rowMatch(rowValue, selectedValue) { return selectedValue === 'todos' || norm(rowValue) === norm(selectedValue); }
 
 function applyFilters(allData, selectedFilters) {
   if (!Array.isArray(allData)) return [];
   const f = selectedFilters || {};
   return allData.filter((d) => {
-    const okCampus = rowMatch(d.CAMPUS_DISCENTE, f.campus);
-    const okUnidade = rowMatch(d.UNIDADE_DISCENTE, f.unidade);
-    const okCurso = rowMatch(d.CURSO_DISCENTE, f.curso);
-    return okCampus && okUnidade && okCurso;
+    return rowMatch(d.CAMPUS_DISCENTE, f.campus) && 
+           rowMatch(d.UNIDADE_DISCENTE, f.unidade) && 
+           rowMatch(d.CURSO_DISCENTE, f.curso);
   });
 }
 
 function buildFilterOptions(allData, selectedFilters) {
-  if (!Array.isArray(allData) || !allData.length) {
-    return { campus: [], unidades: [], cursos: [] };
-  }
-
+  if (!Array.isArray(allData) || !allData.length) return { campus: [], unidades: [], cursos: [] };
   const f = selectedFilters || { campus: 'todos', unidade: 'todos', curso: 'todos' };
 
-  function keepRowForOptions(row, ignoreKey) {
-    const campusOk = ignoreKey === 'CAMPUS_DISCENTE' ? true : rowMatch(row.CAMPUS_DISCENTE, f.campus);
-    const unidadeOk = ignoreKey === 'UNIDADE_DISCENTE' ? true : rowMatch(row.UNIDADE_DISCENTE, f.unidade);
-    const cursoOk = ignoreKey === 'CURSO_DISCENTE' ? true : rowMatch(row.CURSO_DISCENTE, f.curso);
-    return campusOk && unidadeOk && cursoOk;
+  function keepRow(row, ignoreKey) {
+    const cOk = ignoreKey === 'CAMPUS_DISCENTE' ? true : rowMatch(row.CAMPUS_DISCENTE, f.campus);
+    const uOk = ignoreKey === 'UNIDADE_DISCENTE' ? true : rowMatch(row.UNIDADE_DISCENTE, f.unidade);
+    const crOk = ignoreKey === 'CURSO_DISCENTE' ? true : rowMatch(row.CURSO_DISCENTE, f.curso);
+    return cOk && uOk && crOk;
   }
 
-  function uniqFrom(key, ignoreKey) {
-    const set = new Set();
-    for (const row of allData) {
-      if (!keepRowForOptions(row, ignoreKey)) continue;
-      const val = norm(row[key]);
-      if (val) set.add(val);
-    }
-    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  function uniq(key) {
+    const s = new Set();
+    for (const r of allData) { if (keepRow(r, key)) { const v = norm(r[key]); if (v) s.add(v); } }
+    return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }
 
-  return {
-    campus: uniqFrom('CAMPUS_DISCENTE', 'CAMPUS_DISCENTE'),
-    unidades: uniqFrom('UNIDADE_DISCENTE', 'UNIDADE_DISCENTE'),
-    cursos: uniqFrom('CURSO_DISCENTE', 'CURSO_DISCENTE'),
-  };
+  return { campus: uniq('CAMPUS_DISCENTE'), unidades: uniq('UNIDADE_DISCENTE'), cursos: uniq('CURSO_DISCENTE') };
 }
 
 function sanitizeFilters(allData, filters) {
   let next = { ...filters };
-
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 2; i++) {
     const opts = buildFilterOptions(allData, next);
-    let changed = false;
-
-    if (next.campus !== 'todos' && !opts.campus.includes(norm(next.campus))) {
-      next.campus = 'todos';
-      changed = true;
-    }
-    if (next.unidade !== 'todos' && !opts.unidades.includes(norm(next.unidade))) {
-      next.unidade = 'todos';
-      changed = true;
-    }
-    if (next.curso !== 'todos' && !opts.cursos.includes(norm(next.curso))) {
-      next.curso = 'todos';
-      changed = true;
-    }
-
-    if (!changed) break;
+    if (next.campus !== 'todos' && !opts.campus.includes(norm(next.campus))) next.campus = 'todos';
+    if (next.unidade !== 'todos' && !opts.unidades.includes(norm(next.unidade))) next.unidade = 'todos';
+    if (next.curso !== 'todos' && !opts.cursos.includes(norm(next.curso))) next.curso = 'todos';
   }
-
   return next;
 }
 
-function calcTopUnit(filteredData) {
-  if (!filteredData?.length) return { name: '-', count: 0 };
-  const counts = filteredData.reduce((acc, row) => {
-    const name = row.UNIDADE_DISCENTE || 'N/I';
-    acc[name] = (acc[name] || 0) + 1;
-    return acc;
-  }, {});
+function calcTopUnit(data) {
+  if (!data?.length) return { name: '-', count: 0 };
+  const counts = data.reduce((acc, r) => { const n = r.UNIDADE_DISCENTE || 'N/I'; acc[n] = (acc[n] || 0) + 1; return acc; }, {});
   const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
   return { name: top[0], count: top[1] };
 }
 
 function buildChartsByDimension(filteredData, bgColor, borderColor, selectedFilters) {
   if (!dimensionMapping) return [];
+  const sDim = selectedFilters?.dimensao || 'todas';
+  const sQ = selectedFilters?.pergunta || 'todas';
 
-  const selectedDim = selectedFilters?.dimensao || 'todas';
-  const selectedQuestion = selectedFilters?.pergunta || 'todas';
-
-  const dims = Object.entries(dimensionMapping).filter(([dimensionName]) => {
-    if (!selectedDim || selectedDim === 'todas') return true;
-    return dimensionName === selectedDim;
-  });
-
-  const charts = dims
-    .map(([dimensionName, questionKeys]) => {
+  return Object.entries(dimensionMapping)
+    .filter(([name]) => sDim === 'todas' || name === sDim)
+    .map(([name, questionKeys]) => {
       let keys = Array.isArray(questionKeys) ? [...questionKeys] : [];
-
-      if (selectedQuestion && selectedQuestion !== 'todas') {
-        keys = keys.includes(selectedQuestion) ? [selectedQuestion] : [];
-      }
-
+      if (sQ !== 'todas') keys = keys.includes(sQ) ? [sQ] : [];
       if (!keys.length) return null;
 
       const labels = [];
       const data = [];
-
       for (const key of keys) {
-        const scores = (filteredData || [])
-          .map((item) => ratingToScore[item[key]])
-          .filter((v) => v !== null && v !== undefined);
-
-        if (!scores.length) continue;
-
-        const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-        labels.push(key);
-        data.push(Number(avg.toFixed(2)));
+        const scores = filteredData.map(i => ratingToScore[i[key]]).filter(v => v !== null && v !== undefined);
+        if (scores.length) {
+          const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          labels.push(key);
+          data.push(Number(avg.toFixed(2)));
+        }
       }
-
       if (!labels.length) return null;
-
-      return {
-        dimensionName,
-        chartData: {
-          labels,
-          datasets: [
-            {
-              label: 'Média',
-              data,
-              backgroundColor: bgColor,
-              borderColor: borderColor,
-              borderWidth: 1,
-            },
-          ],
-        },
-      };
-    })
-    .filter(Boolean);
-
-  return charts;
+      return { dimensionName: name, chartData: { labels, datasets: [{ label: 'Média', data, backgroundColor: bgColor, borderColor: borderColor, borderWidth: 1 }] } };
+    }).filter(Boolean);
 }

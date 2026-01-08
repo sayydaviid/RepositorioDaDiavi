@@ -6,7 +6,11 @@ const API_BASE =
 const nextConfig = {
   reactStrictMode: true,
 
-  // Proxy: qualquer chamada a /backend/* vai pro seu serviço R
+  // 1. ATIVAÇÃO EXPLÍCITA DA COMPRESSÃO
+  // Isso garante que o Next.js utilize Gzip/Brotli para compactar o JSON de 3MB.
+  // Em produção (Vercel ou next start), isso reduz os 3MB para ~400KB.
+  compress: true,
+
   async rewrites() {
     return [
       {
@@ -16,19 +20,28 @@ const nextConfig = {
     ];
   },
 
-  // (opcional) headers extras pra evitar cache agressivo das respostas da API
   async headers() {
     return [
       {
+        // 2. AJUSTE DE CACHE PARA O BACKEND
+        // Para dados dinâmicos do R (Hugging Face), o no-store é perfeito.
         source: '/backend/:path*',
         headers: [
-          { key: 'Cache-Control', value: 'no-store' },
+          { key: 'Cache-Control', value: 'no-store, max-age=0' },
+        ],
+      },
+      {
+        // 3. OTIMIZAÇÃO PARA O ARQUIVO LOCAL (DISCENTE.json)
+        // Como o arquivo tem 3MB e não muda a cada segundo, permitimos 
+        // que o navegador use o ETag para validar se o arquivo mudou antes de baixar tudo de novo.
+        source: '/api/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, s-maxage=10, stale-while-revalidate=59' },
         ],
       },
     ];
   },
 
-  // (opcional) se algum pacote usa 'fs' no client, evita polyfill
   webpack: (config) => {
     config.resolve.fallback = {
       ...(config.resolve.fallback || {}),
