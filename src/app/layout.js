@@ -4,10 +4,9 @@ import '../styles/globals.css';
 import Sidebar from '../components/Sidebar';
 import Footer from '../components/Footer';
 
-// 1. Importe o DataProvider que criamos
+// 1. Importe o DataProvider (ajuste o caminho se necessário)
 import { DataProvider } from '../app/avaliacao/minhaopiniao/context/DataContext'; 
 
-// Configuração das fontes
 const poppins = Poppins({
   subsets: ['latin'],
   weight: ['400', '500'],
@@ -27,9 +26,8 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-BR"> {/* Alterado para pt-BR */}
+    <html lang="pt-BR">
       <body className={`${poppins.variable} ${ibmPlexSans.variable}`}>
-        {/* 2. Envolva toda a estrutura com o DataProvider */}
         <DataProvider>
           <div style={{ display: 'flex' }}>
             <Sidebar />
@@ -38,7 +36,7 @@ export default function RootLayout({ children }) {
               padding: '40px', 
               display: 'flex', 
               flexDirection: 'column',
-              minHeight: '100vh' // Garante que ocupe a altura toda
+              minHeight: '100vh' 
             }}>
               <div style={{ flex: 1 }}>
                 {children}

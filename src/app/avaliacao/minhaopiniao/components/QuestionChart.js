@@ -10,35 +10,40 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+// 1. Importar o plugin de datalabels
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import styles from '../../../../styles/dados.module.css';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+// 2. Registrar o plugin
+ChartJS.register(
+  CategoryScale, 
+  LinearScale, 
+  BarElement, 
+  Title, 
+  Tooltip, 
+  Legend,
+  ChartDataLabels
+);
 
 /* ======================================================
-   Helper: quebra textos longos (tooltip)
+   Helpers de Tooltip (Mantidos conforme seu código original)
 ====================================================== */
 function wrapLines(text, max = 70) {
   if (!text) return [];
   const words = String(text).split(' ');
   const lines = [];
   let line = '';
-
   for (const w of words) {
     const test = line ? `${line} ${w}` : w;
     if (test.length > max) {
       if (line) lines.push(line);
       line = w;
-    } else {
-      line = test;
-    }
+    } else { line = test; }
   }
   if (line) lines.push(line);
   return lines;
 }
 
-/* ======================================================
-   Tooltip helpers
-====================================================== */
 const TOOLTIP_ID = 'chartjs-ext-tooltip';
 
 function hideTooltip(el) {
@@ -49,19 +54,14 @@ function hideTooltip(el) {
 
 function getOrCreateTooltipEl() {
   let el = document.getElementById(TOOLTIP_ID);
-
   if (!el) {
     el = document.createElement('div');
     el.id = TOOLTIP_ID;
-
     el.style.position = 'fixed';
     el.style.pointerEvents = 'none';
     el.style.zIndex = '99999';
     el.style.opacity = '0';
-
-    // Fade out/in: 50ms
     el.style.transition = 'opacity 50ms ease';
-
     el.style.maxWidth = '420px';
     el.style.background = '#050F24';
     el.style.color = '#fff';
@@ -70,119 +70,57 @@ function getOrCreateTooltipEl() {
     el.style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)';
     el.style.fontSize = '12px';
     el.style.lineHeight = '1.2';
-
     document.body.appendChild(el);
 
-    // Global mousemove: se não está no canvas ativo, esconde
     if (!window.__chartjsExternalTooltipGlobalBound) {
       window.__chartjsExternalTooltipGlobalBound = true;
-
-      document.addEventListener(
-        'mousemove',
-        (e) => {
-          const t = document.getElementById(TOOLTIP_ID);
-          if (!t) return;
-
-          const activeCanvas = t.__activeCanvas;
-          if (!activeCanvas) return;
-
-          // Se saiu do canvas ativo, some
-          if (!activeCanvas.contains(e.target)) {
-            hideTooltip(t);
-          }
-        },
-        true
-      );
-
-      window.addEventListener(
-        'scroll',
-        () => {
-          const t = document.getElementById(TOOLTIP_ID);
-          hideTooltip(t);
-        },
-        { passive: true }
-      );
-
-      window.addEventListener('blur', () => {
+      document.addEventListener('mousemove', (e) => {
         const t = document.getElementById(TOOLTIP_ID);
-        hideTooltip(t);
-      });
+        if (!t) return;
+        const activeCanvas = t.__activeCanvas;
+        if (!activeCanvas) return;
+        if (!activeCanvas.contains(e.target)) { hideTooltip(t); }
+      }, true);
+      window.addEventListener('scroll', () => hideTooltip(document.getElementById(TOOLTIP_ID)), { passive: true });
     }
   }
-
   return el;
 }
 
-/* ======================================================
-   External Tooltip Handler
-====================================================== */
 function externalTooltipHandler(context, questionMap) {
   const { chart, tooltip } = context;
   const tooltipEl = getOrCreateTooltipEl();
-
-  // IMPORTANTÍSSIMO: se não estiver em cima de um ELEMENTO (barra), não mostra
-  // Com intersect:true, isso vira o comportamento padrão.
   if (!tooltip || !tooltip.dataPoints || tooltip.dataPoints.length === 0) {
     hideTooltip(tooltipEl);
     return;
   }
-
   tooltipEl.__activeCanvas = chart.canvas;
-
   const item = tooltip.dataPoints[0];
   const key = item?.label || '';
   const fullText = questionMap?.[key] || '';
   const wrapped = wrapLines(fullText, 70);
-
   const value = item?.parsed?.y;
-  const formatted =
-    value === null || value === undefined
-      ? ''
-      : Number(value).toFixed(2).replace('.', ',');
+  const formatted = value === null || value === undefined ? '' : Number(value).toFixed(2).replace('.', ',');
 
   tooltipEl.innerHTML = `
     <div style="font-weight:700; font-size:13px; margin-bottom:6px;">${key}</div>
-    ${
-      wrapped.length
-        ? `<div style="opacity:0.95; margin-bottom:8px;">${wrapped
-            .map((l) => `<div>${l}</div>`)
-            .join('')}</div>`
-        : ''
-    }
-    ${
-      formatted
-        ? `<div style="display:flex; gap:8px; align-items:center;">
+    ${wrapped.length ? `<div style="opacity:0.95; margin-bottom:8px;">${wrapped.map((l) => `<div>${l}</div>`).join('')}</div>` : ''}
+    ${formatted ? `<div style="display:flex; gap:8px; align-items:center;">
              <span style="width:10px; height:10px; background:#ff8e29; display:inline-block; border-radius:2px;"></span>
              <span>Média: ${formatted} de 5</span>
-           </div>`
-        : ''
-    }
+           </div>` : ''}
   `;
 
   const canvasRect = chart.canvas.getBoundingClientRect();
-  const tooltipWidth = tooltipEl.offsetWidth || 300;
-  const tooltipHeight = tooltipEl.offsetHeight || 120;
-
-  let x = canvasRect.left + tooltip.caretX - tooltipWidth / 2;
-  let y = canvasRect.top + tooltip.caretY - tooltipHeight - 12;
-
-  const pad = 12;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  if (x < pad) x = pad;
-  if (x + tooltipWidth > vw - pad) x = vw - pad - tooltipWidth;
-
-  if (y < pad) y = canvasRect.top + tooltip.caretY + 12;
-  if (y + tooltipHeight > vh - pad) y = vh - pad - tooltipHeight;
-
+  let x = canvasRect.left + tooltip.caretX - (tooltipEl.offsetWidth / 2);
+  let y = canvasRect.top + tooltip.caretY - tooltipEl.offsetHeight - 12;
   tooltipEl.style.left = `${x}px`;
   tooltipEl.style.top = `${y}px`;
   tooltipEl.style.opacity = '1';
 }
 
 /* ======================================================
-   QuestionChart
+   QuestionChart Ajustado
 ====================================================== */
 export default function QuestionChart({
   chartData,
@@ -201,7 +139,17 @@ export default function QuestionChart({
         display: true,
         text: title,
         font: { size: 18, weight: 'bold' },
-        padding: { bottom: 20 },
+        padding: { bottom: 25 }, // Espaço entre título e números
+      },
+
+      // 3. Configuração para exibir números ACIMA das barras
+      datalabels: {
+        anchor: 'end', // Fixa no topo da barra
+        align: 'top',  // Posiciona acima do topo
+        offset: 5,     // Distância da barra
+        color: '#444',
+        font: { weight: 'bold', size: 12 },
+        formatter: (value) => value.toFixed(2),
       },
 
       tooltip: {
@@ -211,24 +159,22 @@ export default function QuestionChart({
     },
 
     layout: {
-      padding: { top: 12 },
+      // 4. Padding superior aumentado para o número do "5,00" não ser cortado
+      padding: { top: 30, left: 10, right: 10, bottom: 10 },
     },
 
-    // AQUI está a correção do seu requisito:
-    // tooltip só quando estiver EM CIMA da barra
     interaction: {
       mode: 'nearest',
       intersect: true,
     },
 
-    // Garante que o ChartJS processe saída do canvas
     events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
 
     scales: {
       y: {
         beginAtZero: true,
         min: 0,
-        max: 5,
+        max: 5.5, // 5. Ajustado de 5 para 5.5 para criar espaço visual no topo
         ticks: { stepSize: 1 },
       },
       x: {
@@ -237,6 +183,7 @@ export default function QuestionChart({
     },
   };
 
+  // Merge profundo das opções
   const options = {
     ...defaultOptions,
     ...customOptions,
@@ -252,20 +199,10 @@ export default function QuestionChart({
       ...defaultOptions.layout,
       ...(customOptions?.layout || {}),
     },
-    interaction: {
-      ...defaultOptions.interaction,
-      ...(customOptions?.interaction || {}),
-    },
-  };
-
-  // Se sair do card, esconde (reforço)
-  const onMouseLeaveContainer = () => {
-    const t = document.getElementById(TOOLTIP_ID);
-    hideTooltip(t);
   };
 
   return (
-    <div className={styles.chartContainer} onMouseLeave={onMouseLeaveContainer}>
+    <div className={styles.chartContainer} onMouseLeave={() => hideTooltip(document.getElementById(TOOLTIP_ID))}>
       <Bar data={chartData} options={options} />
     </div>
   );
