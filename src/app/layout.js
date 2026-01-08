@@ -2,7 +2,10 @@
 import { Poppins, IBM_Plex_Sans } from 'next/font/google';
 import '../styles/globals.css';
 import Sidebar from '../components/Sidebar';
-import Footer from '../components/Footer'; // <-- A LINHA QUE FALTAVA
+import Footer from '../components/Footer';
+
+// 1. Importe o DataProvider que criamos
+import { DataProvider } from '../context/DataContext'; 
 
 // Configuração das fontes
 const poppins = Poppins({
@@ -24,19 +27,26 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR"> {/* Alterado para pt-BR */}
       <body className={`${poppins.variable} ${ibmPlexSans.variable}`}>
-        <div style={{ display: 'flex' }}>
-          <Sidebar />
-          {/* Este estilo garante que o footer fique no final da página */}
-          <main style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ flex: 1 }}>
-              {/* children (o conteúdo da página) é renderizado aqui dentro */}
-              {children}
-            </div>
-            <Footer /> {/* Você já tinha colocado esta linha corretamente */}
-          </main>
-        </div>
+        {/* 2. Envolva toda a estrutura com o DataProvider */}
+        <DataProvider>
+          <div style={{ display: 'flex' }}>
+            <Sidebar />
+            <main style={{ 
+              flex: 1, 
+              padding: '40px', 
+              display: 'flex', 
+              flexDirection: 'column',
+              minHeight: '100vh' // Garante que ocupe a altura toda
+            }}>
+              <div style={{ flex: 1 }}>
+                {children}
+              </div>
+              <Footer />
+            </main>
+          </div>
+        </DataProvider>
       </body>
     </html>
   );
