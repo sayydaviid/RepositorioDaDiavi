@@ -8,6 +8,7 @@ import Header from '../components/Header';
 import StatCard from '../components/StatCard';
 import TecnicoFilters from '../components/TecnicoFilters';
 import QuestionChart from '../components/QuestionChart';
+import { useGlobalData } from '../context/DataContext'; 
 
 // Utils e Estilos
 import styles from '../../../../styles/dados.module.css';

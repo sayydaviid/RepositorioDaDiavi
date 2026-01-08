@@ -5,7 +5,7 @@ import Sidebar from '../components/Sidebar';
 import Footer from '../components/Footer';
 
 // 1. Importe o DataProvider que criamos
-import { DataProvider } from '../context/DataContext'; 
+import { DataProvider } from '../app/avaliacao/minhaopiniao/context/DataContext'; 
 
 // Configuração das fontes
 const poppins = Poppins({

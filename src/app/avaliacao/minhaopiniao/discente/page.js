@@ -8,7 +8,7 @@ import Header from '../components/Header';
 import StatCard from '../components/StatCard';
 import DiscenteFilters from '../components/DiscenteFilters';
 import QuestionChart from '../components/QuestionChart';
-
+import { useGlobalData } from '../context/DataContext'; 
 // Utils e Estilos
 import styles from '../../../../styles/dados.module.css';
 import { questionMapping, ratingToScore } from '../lib/questionMapping';

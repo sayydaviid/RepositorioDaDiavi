@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import styles from '../../../styles/page.module.css';
 
 // 1. Importe o seu Contexto Global
-import { useGlobalData } from '../context/DataContext'; 
+import { useGlobalData } from '../minhaopiniao/context/DataContext'; 
 
 export default function MinhaOpiniaoPage() {
   const router = useRouter();
