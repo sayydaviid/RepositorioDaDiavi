@@ -3,12 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Users, Building, Loader2 } from 'lucide-react';
 
+// Contexto Global
+import { useGlobalData } from '../context/DataContext'; 
+
 // Componentes
 import Header from '../components/Header';
 import StatCard from '../components/StatCard';
 import TecnicoFilters from '../components/TecnicoFilters';
 import QuestionChart from '../components/QuestionChart';
-import { useGlobalData } from '../context/DataContext'; 
 
 // Utils e Estilos
 import styles from '../../../../styles/dados.module.css';
@@ -62,18 +64,19 @@ function LoadingOverlay({ progress }) {
           marginTop: '12px', display: 'flex', justifyContent: 'space-between', 
           fontSize: '0.9rem', fontWeight: '600', color: '#FF8E29' 
         }}>
-          <span>{progress < 100 ? 'Baixando...' : 'Finalizando...'}</span>
+          <span>{progress < 100 ? 'Baixando...' : 'Processando...'}</span>
           <span>{progress}%</span>
         </div>
       </div>
-      <style jsx global>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
+      <style jsx global>{` @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } `}</style>
     </div>
   );
 }
 
 export default function TecnicoPage() {
+  // 1. Acesso ao Cache Global
+  const { cache, saveToCache } = useGlobalData();
+
   const [allData, setAllData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -83,9 +86,17 @@ export default function TecnicoPage() {
   const [selectedFiltersB, setSelectedFiltersB] = useState(DEFAULT_FILTERS);
 
   /* =====================================================
-     Fetch de dados com progresso real (ReadableStream)
+     Efeito de Carregamento com Cache Integrado
   ===================================================== */
   useEffect(() => {
+    // 2. Verifica se os dados dos técnicos já existem no cache
+    if (cache.tecnico && cache.tecnico.length > 0) {
+      setAllData(cache.tecnico);
+      setProgress(100);
+      setLoading(false);
+      return;
+    }
+
     async function loadTecnicoData() {
       try {
         const response = await fetch('/api/tecnico');
@@ -116,11 +127,15 @@ export default function TecnicoPage() {
           position += chunk.length;
         }
 
-        const data = JSON.parse(new TextDecoder("utf-8").decode(allChunks));
+        const decodedString = new TextDecoder("utf-8").decode(allChunks);
+        const data = JSON.parse(decodedString);
         const tecnicoData = data[2]?.data || data;
-        setAllData(Array.isArray(tecnicoData) ? tecnicoData : []);
+        const finalData = Array.isArray(tecnicoData) ? tecnicoData : [];
         
-        // Delay para suavizar a transição visual
+        // 3. Salva no cache global
+        saveToCache('tecnico', finalData);
+
+        setAllData(finalData);
         setTimeout(() => setLoading(false), 600);
       } catch (err) {
         console.error('Não foi possível carregar os dados dos técnicos:', err);
@@ -128,7 +143,7 @@ export default function TecnicoPage() {
       }
     }
     loadTecnicoData();
-  }, []);
+  }, [cache.tecnico, saveToCache]);
 
   /* =====================================================
      Filtros e Cálculos Memoizados
@@ -194,10 +209,7 @@ export default function TecnicoPage() {
     <div className={styles.container}>
       {loading && <LoadingOverlay progress={progress} />}
 
-      <Header
-        title="Análise de Respostas dos Técnicos"
-        subtitle="Dados referentes ao questionário de autoavaliação"
-      />
+      <Header title="Análise de Respostas dos Técnicos" subtitle="Dados referentes ao questionário de autoavaliação" />
 
       <div style={{ 
         opacity: loading ? 0 : 1, 
@@ -206,29 +218,13 @@ export default function TecnicoPage() {
       }}>
         {/* Stats Section */}
         <div className={`${styles.statsGrid} ${compareEnabled ? styles.statsGridCompare : ''}`}>
-          <StatCard
-            title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'}
-            value={filteredDataA.length.toLocaleString('pt-BR')}
-            icon={<Users />}
-          />
-          <StatCard
-            title={compareEnabled ? 'Top Lotação (A)' : 'Lotação com Mais Participantes'}
-            value={topLotacaoA}
-            icon={<Building />}
-          />
+          <StatCard title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'} value={filteredDataA.length.toLocaleString('pt-BR')} icon={<Users />} />
+          <StatCard title={compareEnabled ? 'Top Lotação (A)' : 'Lotação com Mais Participantes'} value={topLotacaoA} icon={<Building />} />
 
           {compareEnabled && (
             <>
-              <StatCard
-                title="Total Participantes (B)"
-                value={filteredDataB.length.toLocaleString('pt-BR')}
-                icon={<Users />}
-              />
-              <StatCard
-                title="Top Lotação (B)"
-                value={topLotacaoB}
-                icon={<Building />}
-              />
+              <StatCard title="Total Participantes (B)" value={filteredDataB.length.toLocaleString('pt-BR')} icon={<Users />} />
+              <StatCard title="Top Lotação (B)" value={topLotacaoB} icon={<Building />} />
             </>
           )}
         </div>
@@ -251,14 +247,7 @@ export default function TecnicoPage() {
           />
 
           {compareEnabled && (
-            <TecnicoFilters
-              title="Filtros (B)"
-              filters={filterOptionsB}
-              selectedFilters={selectedFiltersB}
-              onFilterChange={handleFilterChangeB}
-              questionMap={questionMappingTecnico}
-              dimensionMap={dimensionMappingTecnico}
-            />
+            <TecnicoFilters title="Filtros (B)" filters={filterOptionsB} selectedFilters={selectedFiltersB} onFilterChange={handleFilterChangeB} questionMap={questionMappingTecnico} dimensionMap={dimensionMappingTecnico} />
           )}
         </div>
 
@@ -311,7 +300,7 @@ export default function TecnicoPage() {
 }
 
 /* =====================================================
-   Helpers
+   Helpers (Lógica Mantida)
 ===================================================== */
 
 function applyFiltersTecnico(allData, selectedFilters) {

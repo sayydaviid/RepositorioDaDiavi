@@ -3,12 +3,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Users, Building2, Loader2 } from 'lucide-react';
 
+// Contexto Global
+import { useGlobalData } from '../context/DataContext'; 
+
 // Componentes
 import Header from '../components/Header';
 import StatCard from '../components/StatCard';
 import DiscenteFilters from '../components/DiscenteFilters';
 import QuestionChart from '../components/QuestionChart';
-import { useGlobalData } from '../context/DataContext'; 
+
 // Utils e Estilos
 import styles from '../../../../styles/dados.module.css';
 import { questionMapping, ratingToScore } from '../lib/questionMapping';
@@ -23,80 +26,37 @@ const DEFAULT_FILTERS = {
 };
 
 /* ==========================================================================
-   Componente de Loading Overlay (Bloqueio de Tela com Progresso)
+   Componente de Loading Overlay
    ========================================================================== */
 function LoadingOverlay({ progress }) {
   return (
     <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100vh',
-      backgroundColor: 'rgba(255, 255, 255, 0.98)',
-      zIndex: 9999,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      backgroundColor: 'rgba(255, 255, 255, 0.98)', zIndex: 9999,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       backdropFilter: 'blur(10px)'
     }}>
       <div style={{ width: '350px', textAlign: 'center', padding: '2rem' }}>
-        <Loader2 
-          style={{ 
-            width: '48px', 
-            height: '48px', 
-            color: '#FF8E29', 
-            marginBottom: '1.5rem',
-            animation: 'spin 1s linear infinite' 
-          }} 
-        />
-        <h2 style={{ fontSize: '1.5rem', color: '#1a1a1a', marginBottom: '0.5rem', fontWeight: '700' }}>
-          Carregando Dados
-        </h2>
-        <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1rem' }}>
-          Preparando análise institucional...
-        </p>
-        
-        {/* Barra de Progresso */}
-        <div style={{ 
-          width: '100%', 
-          height: '12px', 
-          backgroundColor: '#f0f0f0', 
-          borderRadius: '10px', 
-          overflow: 'hidden',
-          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ 
-            width: `${progress}%`, 
-            height: '100%', 
-            backgroundColor: '#FF8E29', 
-            transition: 'width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1)',
-            backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%, transparent)',
-            backgroundSize: '1rem 1rem'
-          }} />
+        <Loader2 style={{ width: '48px', height: '48px', color: '#FF8E29', marginBottom: '1.5rem', animation: 'spin 1s linear infinite' }} />
+        <h2 style={{ fontSize: '1.5rem', color: '#1a1a1a', marginBottom: '0.5rem', fontWeight: '700' }}>Carregando Dados</h2>
+        <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1rem' }}>Preparando análise institucional...</p>
+        <div style={{ width: '100%', height: '12px', backgroundColor: '#f0f0f0', borderRadius: '10px', overflow: 'hidden', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div style={{ width: `${progress}%`, height: '100%', backgroundColor: '#FF8E29', transition: 'width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1)' }} />
         </div>
-        
-        <div style={{ 
-          marginTop: '12px', 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          fontSize: '0.9rem', 
-          fontWeight: '600',
-          color: '#FF8E29' 
-        }}>
+        <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: '600', color: '#FF8E29' }}>
           <span>{progress < 100 ? 'Baixando...' : 'Processando...'}</span>
           <span>{progress}%</span>
         </div>
       </div>
-      <style jsx global>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
+      <style jsx global>{` @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } `}</style>
     </div>
   );
 }
 
 export default function DiscentePage() {
+  // 1. Acesso ao Cache Global
+  const { cache, saveToCache } = useGlobalData();
+
   const [allData, setAllData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -105,7 +65,18 @@ export default function DiscentePage() {
   const [selectedFiltersA, setSelectedFiltersA] = useState(DEFAULT_FILTERS);
   const [selectedFiltersB, setSelectedFiltersB] = useState(DEFAULT_FILTERS);
 
+  /* =========================
+     Efeito de Carregamento com Lógica de Cache
+  ========================= */
   useEffect(() => {
+    // Verificamos se os dados já estão no cache global
+    if (cache.discente && cache.discente.length > 0) {
+      setAllData(cache.discente);
+      setProgress(100);
+      setLoading(false);
+      return;
+    }
+
     async function loadData() {
       try {
         const response = await fetch('/api/discente');
@@ -118,21 +89,14 @@ export default function DiscentePage() {
         let loadedSize = 0;
         let chunks = [];
 
-        // Loop de leitura do stream
         while(true) {
           const { done, value } = await reader.read();
           if (done) break;
-
           chunks.push(value);
           loadedSize += value.length;
-          
-          if (totalSize > 0) {
-            const p = Math.round((loadedSize / totalSize) * 100);
-            setProgress(p);
-          }
+          if (totalSize > 0) setProgress(Math.round((loadedSize / totalSize) * 100));
         }
 
-        // Unificando os pedaços (Uint8Array)
         const allChunks = new Uint8Array(loadedSize);
         let position = 0;
         for(let chunk of chunks) {
@@ -140,14 +104,15 @@ export default function DiscentePage() {
           position += chunk.length;
         }
 
-        // Decodificando e convertendo para objeto
         const decodedString = new TextDecoder("utf-8").decode(allChunks);
         const data = JSON.parse(decodedString);
-        
         const studentData = data[2]?.data || data;
-        setAllData(studentData || []);
+        const finalData = Array.isArray(studentData) ? studentData : [];
+
+        // 2. SALVAR NO CACHE GLOBAL
+        saveToCache('discente', finalData);
         
-        // Pequeno delay para suavizar a transição após o 100%
+        setAllData(finalData);
         setTimeout(() => setLoading(false), 600);
       } catch (err) {
         console.error('Erro ao carregar dados:', err);
@@ -156,39 +121,22 @@ export default function DiscentePage() {
     }
 
     loadData();
-  }, []);
+  }, [cache.discente, saveToCache]); // Dependências importantes para o cache
 
   /* =========================
-     Cálculos Otimizados (Memoized)
+     Cálculos Memoizados
   ========================= */
-  const filteredDataA = useMemo(() => 
-    loading ? [] : applyFilters(allData, selectedFiltersA), 
-  [allData, selectedFiltersA, loading]);
+  const filteredDataA = useMemo(() => loading ? [] : applyFilters(allData, selectedFiltersA), [allData, selectedFiltersA, loading]);
+  const filteredDataB = useMemo(() => loading ? [] : applyFilters(allData, selectedFiltersB), [allData, selectedFiltersB, loading]);
 
-  const filteredDataB = useMemo(() => 
-    loading ? [] : applyFilters(allData, selectedFiltersB), 
-  [allData, selectedFiltersB, loading]);
-
-  const filterOptionsA = useMemo(() => 
-    buildFilterOptions(allData, selectedFiltersA), 
-  [allData, selectedFiltersA]);
-
-  const filterOptionsB = useMemo(() => 
-    buildFilterOptions(allData, selectedFiltersB), 
-  [allData, selectedFiltersB]);
+  const filterOptionsA = useMemo(() => buildFilterOptions(allData, selectedFiltersA), [allData, selectedFiltersA]);
+  const filterOptionsB = useMemo(() => buildFilterOptions(allData, selectedFiltersB), [allData, selectedFiltersB]);
 
   const topUnitA = useMemo(() => calcTopUnit(filteredDataA), [filteredDataA]);
   const topUnitB = useMemo(() => calcTopUnit(filteredDataB), [filteredDataB]);
 
-  const chartsByDimensionA = useMemo(() =>
-    buildChartsByDimension(filteredDataA, 'rgba(255, 142, 41, 0.8)', 'rgba(255, 142, 41, 1)', selectedFiltersA),
-    [filteredDataA, selectedFiltersA]
-  );
-
-  const chartsByDimensionB = useMemo(() =>
-    buildChartsByDimension(filteredDataB, 'rgba(54, 162, 235, 0.8)', 'rgba(54, 162, 235, 1)', selectedFiltersB),
-    [filteredDataB, selectedFiltersB]
-  );
+  const chartsByDimensionA = useMemo(() => buildChartsByDimension(filteredDataA, 'rgba(255, 142, 41, 0.8)', 'rgba(255, 142, 41, 1)', selectedFiltersA), [filteredDataA, selectedFiltersA]);
+  const chartsByDimensionB = useMemo(() => buildChartsByDimension(filteredDataB, 'rgba(54, 162, 235, 0.8)', 'rgba(54, 162, 235, 1)', selectedFiltersB), [filteredDataB, selectedFiltersB]);
 
   const handleFilterChangeA = (e) => {
     const { name, value } = e.target;
@@ -204,51 +152,24 @@ export default function DiscentePage() {
 
   return (
     <div className={styles.container}>
-      {/* 1. Bloqueio e Progresso */}
       {loading && <LoadingOverlay progress={progress} />}
 
-      <Header
-        title="Análise de Respostas dos Discentes"
-        subtitle="Dados referentes ao questionário 'Minha Opinião'"
-      />
+      <Header title="Análise de Respostas dos Discentes" subtitle="Dados referentes ao questionário 'Minha Opinião'" />
 
-      {/* Container Principal com efeito de fade ao carregar */}
-      <div style={{ 
-        opacity: loading ? 0 : 1, 
-        transition: 'opacity 0.8s ease-in-out',
-        pointerEvents: loading ? 'none' : 'auto' 
-      }}>
+      <div style={{ opacity: loading ? 0 : 1, transition: 'opacity 0.8s ease-in-out', pointerEvents: loading ? 'none' : 'auto' }}>
         
-        {/* Stats Section */}
         <div className={`${styles.statsGrid} ${compareEnabled ? styles.statsGridCompare : ''}`}>
-          <StatCard
-            title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'}
-            value={filteredDataA.length.toLocaleString('pt-BR')}
-            icon={<Users />}
-          />
-          <StatCard
-            title={compareEnabled ? 'Top Unidade (A)' : 'Unidade com mais participantes'}
-            value={`${topUnitA.name} — ${topUnitA.count.toLocaleString('pt-BR')}`}
-            icon={<Building2 />}
-          />
+          <StatCard title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'} value={filteredDataA.length.toLocaleString('pt-BR')} icon={<Users />} />
+          <StatCard title={compareEnabled ? 'Top Unidade (A)' : 'Unidade com mais participantes'} value={`${topUnitA.name} — ${topUnitA.count.toLocaleString('pt-BR')}`} icon={<Building2 />} />
 
           {compareEnabled && (
             <>
-              <StatCard
-                title="Total Participantes (B)"
-                value={filteredDataB.length.toLocaleString('pt-BR')}
-                icon={<Users />}
-              />
-              <StatCard
-                title="Top Unidade (B)"
-                value={`${topUnitB.name} — ${topUnitB.count.toLocaleString('pt-BR')}`}
-                icon={<Building2 />}
-              />
+              <StatCard title="Total Participantes (B)" value={filteredDataB.length.toLocaleString('pt-BR')} icon={<Users />} />
+              <StatCard title="Top Unidade (B)" value={`${topUnitB.name} — ${topUnitB.count.toLocaleString('pt-BR')}`} icon={<Building2 />} />
             </>
           )}
         </div>
 
-        {/* Filters Section */}
         <div className={compareEnabled ? styles.filtersCompareGrid : styles.filtersSingle}>
           <DiscenteFilters
             title={compareEnabled ? 'Filtros (A)' : 'Filtros'}
@@ -266,64 +187,33 @@ export default function DiscentePage() {
           />
 
           {compareEnabled && (
-            <DiscenteFilters
-              title="Filtros (B)"
-              filters={filterOptionsB}
-              selectedFilters={selectedFiltersB}
-              onFilterChange={handleFilterChangeB}
-              questionMap={questionMapping}
-              dimensionMap={dimensionMapping}
-            />
+            <DiscenteFilters title="Filtros (B)" filters={filterOptionsB} selectedFilters={selectedFiltersB} onFilterChange={handleFilterChangeB} questionMap={questionMapping} dimensionMap={dimensionMapping} />
           )}
         </div>
 
-        {/* Main Charts Section */}
         <div className={styles.chartsMainContainer}>
           {compareEnabled ? (
             specialPairSideBySide ? (
               <section className={styles.dimensionWrapper}>
                 <div className={styles.equalGrid}>
                   <div className={styles.chartContainerCard}>
-                    <QuestionChart
-                      chartData={chartsByDimensionA[0].chartData}
-                      title={`${chartsByDimensionA[0].dimensionName} (A)`}
-                      questionMap={questionMapping}
-                    />
+                    <QuestionChart chartData={chartsByDimensionA[0].chartData} title={`${chartsByDimensionA[0].dimensionName} (A)`} questionMap={questionMapping} />
                   </div>
                   <div className={styles.chartContainerCard}>
-                    <QuestionChart
-                      chartData={chartsByDimensionB[0].chartData}
-                      title={`${chartsByDimensionB[0].dimensionName} (B)`}
-                      questionMap={questionMapping}
-                    />
+                    <QuestionChart chartData={chartsByDimensionB[0].chartData} title={`${chartsByDimensionB[0].dimensionName} (B)`} questionMap={questionMapping} />
                   </div>
                 </div>
               </section>
             ) : (
-              <CompareDimensions
-                chartsA={chartsByDimensionA}
-                chartsB={chartsByDimensionB}
-                questionMap={questionMapping}
-                styles={styles}
-              />
+              <CompareDimensions chartsA={chartsByDimensionA} chartsB={chartsByDimensionB} questionMap={questionMapping} styles={styles} />
             )
           ) : (
             <div className={styles.singleGrid}>
               {chartsByDimensionA.map(({ dimensionName, chartData }) => (
                 <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
-                  <QuestionChart
-                    chartData={chartData}
-                    title={dimensionName}
-                    questionMap={questionMapping}
-                  />
+                  <QuestionChart chartData={chartData} title={dimensionName} questionMap={questionMapping} />
                 </div>
               ))}
-            </div>
-          )}
-
-          {!compareEnabled && !loading && chartsByDimensionA.length === 0 && (
-            <div style={{ padding: 16, opacity: 0.75 }}>
-              Nenhum dado encontrado para os filtros selecionados.
             </div>
           )}
         </div>
@@ -333,7 +223,7 @@ export default function DiscentePage() {
 }
 
 /* ==========================================================================
-   Funções de Auxiliares e Lógica de Renderização de Comparação
+   Lógica de Comparação e Helpers (Mantidos)
    ========================================================================== */
 
 function CompareDimensions({ chartsA, chartsB, questionMap, styles }) {
@@ -347,20 +237,11 @@ function CompareDimensions({ chartsA, chartsB, questionMap, styles }) {
         const a = aMap.get(dimensionName);
         const b = bMap.get(dimensionName);
         if (!a && !b) return null;
-
         return (
           <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
             <div className={styles.equalGrid}>
-              {a && (
-                <div className={styles.chartContainerCard} style={!b ? { gridColumn: '1 / -1' } : undefined}>
-                  <QuestionChart chartData={a.chartData} title={`${dimensionName} (A)`} questionMap={questionMap} />
-                </div>
-              )}
-              {b && (
-                <div className={styles.chartContainerCard} style={!a ? { gridColumn: '1 / -1' } : undefined}>
-                  <QuestionChart chartData={b.chartData} title={`${dimensionName} (B)`} questionMap={questionMap} />
-                </div>
-              )}
+              {a && <div className={styles.chartContainerCard} style={!b ? { gridColumn: '1 / -1' } : undefined}><QuestionChart chartData={a.chartData} title={`${dimensionName} (A)`} questionMap={questionMap} /></div>}
+              {b && <div className={styles.chartContainerCard} style={!a ? { gridColumn: '1 / -1' } : undefined}><QuestionChart chartData={b.chartData} title={`${dimensionName} (B)`} questionMap={questionMap} /></div>}
             </div>
           </section>
         );
@@ -385,20 +266,17 @@ function applyFilters(allData, selectedFilters) {
 function buildFilterOptions(allData, selectedFilters) {
   if (!Array.isArray(allData) || !allData.length) return { campus: [], unidades: [], cursos: [] };
   const f = selectedFilters || { campus: 'todos', unidade: 'todos', curso: 'todos' };
-
   function keepRow(row, ignoreKey) {
     const cOk = ignoreKey === 'CAMPUS_DISCENTE' ? true : rowMatch(row.CAMPUS_DISCENTE, f.campus);
     const uOk = ignoreKey === 'UNIDADE_DISCENTE' ? true : rowMatch(row.UNIDADE_DISCENTE, f.unidade);
     const crOk = ignoreKey === 'CURSO_DISCENTE' ? true : rowMatch(row.CURSO_DISCENTE, f.curso);
     return cOk && uOk && crOk;
   }
-
   function uniq(key) {
     const s = new Set();
     for (const r of allData) { if (keepRow(r, key)) { const v = norm(r[key]); if (v) s.add(v); } }
     return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }
-
   return { campus: uniq('CAMPUS_DISCENTE'), unidades: uniq('UNIDADE_DISCENTE'), cursos: uniq('CURSO_DISCENTE') };
 }
 
@@ -424,16 +302,13 @@ function buildChartsByDimension(filteredData, bgColor, borderColor, selectedFilt
   if (!dimensionMapping) return [];
   const sDim = selectedFilters?.dimensao || 'todas';
   const sQ = selectedFilters?.pergunta || 'todas';
-
   return Object.entries(dimensionMapping)
     .filter(([name]) => sDim === 'todas' || name === sDim)
     .map(([name, questionKeys]) => {
       let keys = Array.isArray(questionKeys) ? [...questionKeys] : [];
       if (sQ !== 'todas') keys = keys.includes(sQ) ? [sQ] : [];
       if (!keys.length) return null;
-
-      const labels = [];
-      const data = [];
+      const labels = [], data = [];
       for (const key of keys) {
         const scores = filteredData.map(i => ratingToScore[i[key]]).filter(v => v !== null && v !== undefined);
         if (scores.length) {
@@ -442,7 +317,6 @@ function buildChartsByDimension(filteredData, bgColor, borderColor, selectedFilt
           data.push(Number(avg.toFixed(2)));
         }
       }
-      if (!labels.length) return null;
-      return { dimensionName: name, chartData: { labels, datasets: [{ label: 'Média', data, backgroundColor: bgColor, borderColor: borderColor, borderWidth: 1 }] } };
+      return labels.length ? { dimensionName: name, chartData: { labels, datasets: [{ label: 'Média', data, backgroundColor: bgColor, borderColor: borderColor, borderWidth: 1 }] } } : null;
     }).filter(Boolean);
 }
