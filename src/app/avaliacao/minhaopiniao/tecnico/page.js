@@ -64,7 +64,7 @@ function LoadingOverlay({ progress }) {
           marginTop: '12px', display: 'flex', justifyContent: 'space-between', 
           fontSize: '0.9rem', fontWeight: '600', color: '#FF8E29' 
         }}>
-          <span>{progress < 100 ? 'Baixando...' : 'Processando...'}</span>
+          <span>{progress < 100 ? 'Baixando...' : 'Finalizando...'}</span>
           <span>{progress}%</span>
         </div>
       </div>
@@ -89,7 +89,6 @@ export default function TecnicoPage() {
      Efeito de Carregamento com Cache Integrado
   ===================================================== */
   useEffect(() => {
-    // 2. Verifica se os dados dos técnicos já existem no cache
     if (cache.tecnico && cache.tecnico.length > 0) {
       setAllData(cache.tecnico);
       setProgress(100);
@@ -127,14 +126,11 @@ export default function TecnicoPage() {
           position += chunk.length;
         }
 
-        const decodedString = new TextDecoder("utf-8").decode(allChunks);
-        const data = JSON.parse(decodedString);
+        const data = JSON.parse(new TextDecoder("utf-8").decode(allChunks));
         const tecnicoData = data[2]?.data || data;
         const finalData = Array.isArray(tecnicoData) ? tecnicoData : [];
         
-        // 3. Salva no cache global
         saveToCache('tecnico', finalData);
-
         setAllData(finalData);
         setTimeout(() => setLoading(false), 600);
       } catch (err) {
@@ -171,35 +167,17 @@ export default function TecnicoPage() {
   ===================================================== */
   const handleFilterChangeA = (e) => {
     const { name, value } = e.target;
-    if (name === 'lotacao') {
-      setSelectedFiltersA(prev => ({ ...prev, lotacao: value, exercicio: 'todos', cargo: 'todos' }));
-      return;
-    }
-    if (name === 'exercicio') {
-      setSelectedFiltersA(prev => ({ ...prev, exercicio: value, cargo: 'todos' }));
-      return;
-    }
-    if (name === 'dimensao') {
-      setSelectedFiltersA(prev => ({ ...prev, dimensao: value, pergunta: 'todas' }));
-      return;
-    }
+    if (name === 'lotacao') { setSelectedFiltersA(prev => ({ ...prev, lotacao: value, exercicio: 'todos', cargo: 'todos' })); return; }
+    if (name === 'exercicio') { setSelectedFiltersA(prev => ({ ...prev, exercicio: value, cargo: 'todos' })); return; }
+    if (name === 'dimensao') { setSelectedFiltersA(prev => ({ ...prev, dimensao: value, pergunta: 'todas' })); return; }
     setSelectedFiltersA(prev => ({ ...prev, [name]: value }));
   };
 
   const handleFilterChangeB = (e) => {
     const { name, value } = e.target;
-    if (name === 'lotacao') {
-      setSelectedFiltersB(prev => ({ ...prev, lotacao: value, exercicio: 'todos', cargo: 'todos' }));
-      return;
-    }
-    if (name === 'exercicio') {
-      setSelectedFiltersB(prev => ({ ...prev, exercicio: value, cargo: 'todos' }));
-      return;
-    }
-    if (name === 'dimensao') {
-      setSelectedFiltersB(prev => ({ ...prev, dimensao: value, pergunta: 'todas' }));
-      return;
-    }
+    if (name === 'lotacao') { setSelectedFiltersB(prev => ({ ...prev, lotacao: value, exercicio: 'todos', cargo: 'todos' })); return; }
+    if (name === 'exercicio') { setSelectedFiltersB(prev => ({ ...prev, exercicio: value, cargo: 'todos' })); return; }
+    if (name === 'dimensao') { setSelectedFiltersB(prev => ({ ...prev, dimensao: value, pergunta: 'todas' })); return; }
     setSelectedFiltersB(prev => ({ ...prev, [name]: value }));
   };
 
@@ -211,12 +189,8 @@ export default function TecnicoPage() {
 
       <Header title="Análise de Respostas dos Técnicos" subtitle="Dados referentes ao questionário de autoavaliação" />
 
-      <div style={{ 
-        opacity: loading ? 0 : 1, 
-        transition: 'opacity 0.8s ease-in-out',
-        pointerEvents: loading ? 'none' : 'auto' 
-      }}>
-        {/* Stats Section */}
+      <div style={{ opacity: loading ? 0 : 1, transition: 'opacity 0.8s ease-in-out', pointerEvents: loading ? 'none' : 'auto' }}>
+        
         <div className={`${styles.statsGrid} ${compareEnabled ? styles.statsGridCompare : ''}`}>
           <StatCard title={compareEnabled ? 'Total Participantes (A)' : 'Total de Participantes'} value={filteredDataA.length.toLocaleString('pt-BR')} icon={<Users />} />
           <StatCard title={compareEnabled ? 'Top Lotação (A)' : 'Lotação com Mais Participantes'} value={topLotacaoA} icon={<Building />} />
@@ -229,7 +203,6 @@ export default function TecnicoPage() {
           )}
         </div>
 
-        {/* Filters Section */}
         <div className={compareEnabled ? styles.filtersCompareGrid : styles.filtersSingle}>
           <TecnicoFilters
             title={compareEnabled ? 'Filtros (A)' : 'Filtros'}
@@ -251,7 +224,6 @@ export default function TecnicoPage() {
           )}
         </div>
 
-        {/* Charts Main Container */}
         <div className={styles.chartsMainContainer}>
           {compareEnabled ? (
             specialPairSideBySide ? (
@@ -274,11 +246,7 @@ export default function TecnicoPage() {
                       <div className={styles.chartContainerCard} style={!chartB ? { gridColumn: '1 / -1' } : undefined}>
                         <QuestionChart chartData={chartData} title={`${dimensionName} (A)`} questionMap={questionMappingTecnico} />
                       </div>
-                      {chartB && (
-                        <div className={styles.chartContainerCard}>
-                          <QuestionChart chartData={chartB.chartData} title={`${dimensionName} (B)`} questionMap={questionMappingTecnico} />
-                        </div>
-                      )}
+                      {chartB && <div className={styles.chartContainerCard}><QuestionChart chartData={chartB.chartData} title={`${dimensionName} (B)`} questionMap={questionMappingTecnico} /></div>}
                     </div>
                   </section>
                 );
@@ -287,7 +255,12 @@ export default function TecnicoPage() {
           ) : (
             <div className={styles.singleGrid}>
               {chartsA.map(({ dimensionName, chartData }) => (
-                <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
+                <div 
+                  key={`dim-card-${dimensionName}`} 
+                  className={styles.chartContainerCard}
+                  // AJUSTE: Expande para largura total se for o único gráfico exibido no modo sem comparação
+                  style={chartsA.length === 1 ? { gridColumn: '1 / -1' } : {}}
+                >
                   <QuestionChart chartData={chartData} title={String(dimensionName)} questionMap={questionMappingTecnico} />
                 </div>
               ))}
@@ -315,11 +288,9 @@ function applyFiltersTecnico(allData, selectedFilters) {
 function buildTecnicoFilterOptions(allData, selectedFilters) {
   if (!Array.isArray(allData) || !allData.length) return { lotacoes: [], exercicios: [], cargos: [] };
   let lotData = allData, exeData = allData, carData = allData;
-
   if (selectedFilters.lotacao !== 'todos') { exeData = exeData.filter(d => d.UND_LOTACAO_TECNICO === selectedFilters.lotacao); carData = carData.filter(d => d.UND_LOTACAO_TECNICO === selectedFilters.lotacao); }
   if (selectedFilters.exercicio !== 'todos') { lotData = lotData.filter(d => d.UND_EXERCICIO_TECNICO === selectedFilters.exercicio); carData = carData.filter(d => d.UND_EXERCICIO_TECNICO === selectedFilters.exercicio); }
   if (selectedFilters.cargo !== 'todos') { lotData = lotData.filter(d => d.CARGO_TECNICO === selectedFilters.cargo); exeData = exeData.filter(d => d.CARGO_TECNICO === selectedFilters.cargo); }
-
   const uSort = (data, key) => [...new Set(data.map(d => d[key]))].filter(Boolean).sort();
   return { lotacoes: uSort(lotData, 'UND_LOTACAO_TECNICO'), exercicios: uSort(exeData, 'UND_EXERCICIO_TECNICO'), cargos: uSort(carData, 'CARGO_TECNICO') };
 }

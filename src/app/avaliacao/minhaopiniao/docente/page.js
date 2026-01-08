@@ -65,7 +65,6 @@ export default function DocentePage() {
   const [selectedFiltersB, setSelectedFiltersB] = useState(DEFAULT_FILTERS);
 
   useEffect(() => {
-    // 2. Lógica de Checagem de Cache
     if (cache.docente && cache.docente.length > 0) {
       setAllData(cache.docente);
       setProgress(100);
@@ -104,13 +103,11 @@ export default function DocentePage() {
         const teacherData = data[2]?.data || data;
         const finalData = Array.isArray(teacherData) ? teacherData : [];
 
-        // 3. Salva no Cache Global para futuras visitas
         saveToCache('docente', finalData);
-        
         setAllData(finalData);
         setTimeout(() => setLoading(false), 600);
       } catch (err) {
-        console.error('Erro ao carregar dados dos docentes:', err);
+        console.error('Erro ao carregar dados:', err);
         setLoading(false);
       }
     }
@@ -226,7 +223,12 @@ export default function DocentePage() {
           ) : (
             <div className={styles.singleGrid}>
               {chartsByDimensionA.map(({ dimensionName, chartData }) => (
-                <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
+                <div 
+                  key={`dim-card-${dimensionName}`} 
+                  className={styles.chartContainerCard}
+                  // AJUSTE: Ocupa toda a largura se for o único gráfico
+                  style={chartsByDimensionA.length === 1 ? { gridColumn: '1 / -1' } : {}}
+                >
                   <QuestionChart chartData={chartData} title={dimensionName} questionMap={questionMappingDocente} />
                 </div>
               ))}
@@ -239,7 +241,7 @@ export default function DocentePage() {
 }
 
 /* =========================
-   Helpers (Lógica mantida)
+   Helpers
 ========================= */
 
 function applyFiltersDocente(allData, selectedFilters) {

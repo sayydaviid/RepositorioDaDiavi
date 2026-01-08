@@ -69,7 +69,6 @@ export default function DiscentePage() {
      Efeito de Carregamento com Lógica de Cache
   ========================= */
   useEffect(() => {
-    // Verificamos se os dados já estão no cache global
     if (cache.discente && cache.discente.length > 0) {
       setAllData(cache.discente);
       setProgress(100);
@@ -109,9 +108,7 @@ export default function DiscentePage() {
         const studentData = data[2]?.data || data;
         const finalData = Array.isArray(studentData) ? studentData : [];
 
-        // 2. SALVAR NO CACHE GLOBAL
         saveToCache('discente', finalData);
-        
         setAllData(finalData);
         setTimeout(() => setLoading(false), 600);
       } catch (err) {
@@ -119,9 +116,8 @@ export default function DiscentePage() {
         setLoading(false);
       }
     }
-
     loadData();
-  }, [cache.discente, saveToCache]); // Dependências importantes para o cache
+  }, [cache.discente, saveToCache]);
 
   /* =========================
      Cálculos Memoizados
@@ -210,8 +206,17 @@ export default function DiscentePage() {
           ) : (
             <div className={styles.singleGrid}>
               {chartsByDimensionA.map(({ dimensionName, chartData }) => (
-                <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard}>
-                  <QuestionChart chartData={chartData} title={dimensionName} questionMap={questionMapping} />
+                <div 
+                  key={`dim-card-${dimensionName}`} 
+                  className={styles.chartContainerCard}
+                  // AJUSTE: Expande para largura total se for o único gráfico exibido
+                  style={chartsByDimensionA.length === 1 ? { gridColumn: '1 / -1' } : {}}
+                >
+                  <QuestionChart
+                    chartData={chartData}
+                    title={dimensionName}
+                    questionMap={questionMapping}
+                  />
                 </div>
               ))}
             </div>
@@ -223,7 +228,7 @@ export default function DiscentePage() {
 }
 
 /* ==========================================================================
-   Lógica de Comparação e Helpers (Mantidos)
+   Lógica de Comparação e Helpers
    ========================================================================== */
 
 function CompareDimensions({ chartsA, chartsB, questionMap, styles }) {
