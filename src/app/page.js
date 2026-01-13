@@ -24,8 +24,8 @@ export default function Home() {
             <Link href="/avaliacao/avalia" className={styles.ctaPrimary}>
               Acessar Avaliações
             </Link>
-            <Link href="/avaliacao/ead/relatorioEAD" className={styles.ctaGhost}>
-              Gerar Relatório (EAD)
+            <Link href="/avaliacao/minhaopiniao" className={styles.ctaGhost}>
+              Acessar Minha Opinião
             </Link>
           </div>
         </div>
