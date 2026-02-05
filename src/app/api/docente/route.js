@@ -5,25 +5,37 @@ import { promises as fs } from 'fs';
 
 export async function GET() {
   try {
-    // 1. Define o caminho seguro para o arquivo de dados dos DOCENTES
-    const filePath = path.join(process.cwd(), 'src', 'app', 'banco', 'DOCENTE.json');
+    // 1. Caminho para o novo arquivo CSV dos DOCENTES
+    const filePath = path.join(process.cwd(), 'src', 'app', 'banco', 'DOCENTE.csv');
 
-    // 2. Lê o conteúdo do arquivo no servidor
-    const fileContents = await fs.readFile(filePath, 'utf8');
+    // 2. Lê o arquivo como BUFFER
+    // Mais rápido, pois não decodifica o texto no servidor, apenas transmite os bytes
+    const fileBuffer = await fs.readFile(filePath);
 
-    // 3. Converte o conteúdo em um objeto JSON
-    const data = JSON.parse(fileContents);
-
-    // 4. Envia os dados como resposta
-    return NextResponse.json(data);
+    // 3. Retorna a resposta com os headers apropriados para CSV
+    return new NextResponse(fileBuffer, {
+      status: 200,
+      headers: {
+        // Define o tipo como CSV com codificação UTF-8
+        'Content-Type': 'text/csv; charset=utf-8',
+        
+        // Essencial para a barra de progresso no frontend (Loader2)
+        'Content-Length': fileBuffer.length.toString(),
+        
+        // Previne problemas de cache durante o desenvolvimento
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    });
 
   } catch (error) {
-    // Log de erro específico para esta API para facilitar a depuração
     console.error("ERRO NA API '/api/docente':", error); 
     
     return new NextResponse(
-      JSON.stringify({ message: "Erro ao carregar os dados dos docentes." }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({ message: "Erro ao carregar o arquivo CSV dos docentes." }),
+      { 
+        status: 500, 
+        headers: { 'Content-Type': 'application/json' } 
+      }
     );
   }
 }

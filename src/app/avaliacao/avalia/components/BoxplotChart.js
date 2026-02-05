@@ -1,27 +1,82 @@
 // src/app/avalia/components/BoxplotChart.js
-
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
 
-/* Divide o rótulo em linhas semânticas.
-   - Se vier com "\n", respeita a quebra enviada pelo pai (EadDashboardClient). */
-function splitLines(label, maxLen = 14) {
-  if (!label) return [""];
-  const txt = String(label).trim();
+/**
+ * =========================
+ * PERF GUARD RAILS (ajuste conforme necessidade)
+ * =========================
+ * Se seu endpoint pode retornar MUITO outlier, esses limites são obrigatórios
+ * para não travar a UI (SVG + main thread).
+ */
+const MAX_OUTLIERS_SCANNED = 25000; // no máximo quantos pontos vamos "varrer" do payload
+const MAX_OUTLIERS_DRAWN = 1500;   // no máximo quantos outliers serão desenhados
+const BIN_COUNT = 6;               // número de bins (poucas séries scatter -> mais leve)
+const MAX_LABEL_CATS = 80;         // acima disso desliga labels por annotations (muito SVG)
+const MAX_TICK_AMOUNT = 40;        // evita tickAmount = 300 (mesmo com labels hidden)
 
-  // 1) Se o pai já mandou quebras, respeita-as.
-  if (txt.includes('\n')) {
-    return txt.split('\n').map(s => s.trim()).filter(Boolean);
+/**
+ * ApexCharts boxPlot:
+ * Esperado: [lowerFence, q1, med, q3, upperFence]
+ */
+function sanitizeBox5(y) {
+  if (!Array.isArray(y) || y.length < 5) return y;
+
+  let [min, q1, med, q3, max] = y.map((v) => (Number.isFinite(+v) ? +v : NaN));
+  if (![min, q1, med, q3, max].every(Number.isFinite)) return y;
+
+  if (min > max) [min, max] = [max, min];
+  if (q1 > q3) [q1, q3] = [q3, q1];
+
+  if (q1 < min) q1 = min;
+  if (q3 > max) q3 = max;
+
+  if (med < q1) med = q1;
+  if (med > q3) med = q3;
+
+  // evita “caixa-traço”
+  const MIN_BOX_HEIGHT = 0.12;
+  const iqr0 = q3 - q1;
+  if (iqr0 < MIN_BOX_HEIGHT) {
+    const half = MIN_BOX_HEIGHT / 2;
+    q1 = Math.max(1.0, med - half);
+    q3 = Math.min(4.5, med + half);
   }
 
-  // 2) (fallback) quebra por comprimento aproximado
-  const words = txt.split(" ");
+  const iqr = q3 - q1;
+  const lowerFence = Math.max(min, q1 - 1.5 * iqr);
+  const upperFence = Math.min(max, q3 + 1.5 * iqr);
+
+  const lf = Math.min(lowerFence, q1);
+  const uf = Math.max(upperFence, q3);
+
+  return [
+    Number(lf.toFixed(2)),
+    Number(q1.toFixed(2)),
+    Number(med.toFixed(2)),
+    Number(q3.toFixed(2)),
+    Number(uf.toFixed(2)),
+  ];
+}
+
+/** Quebra label em múltiplas linhas (respeita \n se já vier pronto) */
+function splitLines(label, maxLen = 14) {
+  if (!label) return [''];
+  const txt = String(label).trim();
+  if (txt.includes('\n')) {
+    return txt
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  const words = txt.split(' ');
   const lines = [];
-  let line = "";
+  let line = '';
   for (const w of words) {
     const t = line ? `${line} ${w}` : w;
     if (t.length > maxLen) {
@@ -35,208 +90,337 @@ function splitLines(label, maxLen = 14) {
   return lines;
 }
 
-// Gradiente de cinza para outliers
-const getColorForValue = (value, min, max) => {
-  if (min === max) return "#CCCCCC";
-  const p = (value - min) / (max - min);
-  const from = 204, to = 102;
-  const v = Math.round(from + (to - from) * p);
-  const hex = v.toString(16).padStart(2, "0");
-  return `#${hex}${hex}${hex}`;
-};
-
-// Garante altura mínima para a caixa do boxplot (evita virar um traço)
-const EPS = 0.06; // altura mínima ~0.06 na escala 1..4
-function inflateBoxY(y) {
-  if (!Array.isArray(y) || y.length < 5) return y;
-  let [wmin, q1, med, q3, wmax] = y;
-
-  if (q3 - q1 < EPS) {
-    const half = EPS / 2;
-    q1 = Math.max(1.0, med - half);
-    q3 = Math.min(4.0, med + half);
-    // whiskers devem envolver a caixa
-    wmin = Math.min(wmin, q1);
-    wmax = Math.max(wmax, q3);
-  }
-
-  // clamp final
-  wmin = Math.max(1.0, Math.min(wmin, 4.0));
-  wmax = Math.max(1.0, Math.min(wmax, 4.0));
-  q1 = Math.max(1.0, Math.min(q1, 4.0));
-  med = Math.max(1.0, Math.min(med, 4.0));
-  q3 = Math.max(1.0, Math.min(q3, 4.0));
-
-  return [wmin, q1, med, q3, wmax];
+function lerpColorHex(a, b, t) {
+  const toRgb = (hex) => ({
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  });
+  const A = toRgb(a);
+  const B = toRgb(b);
+  const r = Math.round(A.r + (B.r - A.r) * t);
+  const g = Math.round(A.g + (B.g - A.g) * t);
+  const bb = Math.round(A.b + (B.b - A.b) * t);
+  const h = (n) => n.toString(16).padStart(2, '0');
+  return `#${h(r)}${h(g)}${h(bb)}`;
 }
 
-export default function BoxplotChart({ apiData, title }) {
+export default React.memo(function BoxplotChart({ apiData, title }) {
   if (!apiData || !apiData.boxplot_data) {
     return (
-      <div style={{ height: 350, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ height: 350, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         Carregando...
       </div>
     );
   }
 
-  const chartTitle = title || "Distribuição das Médias das Avaliações";
+  const chartTitle = title || 'Distribuição das Médias das Avaliações';
 
-  // Ajusta as caixas com EPS para evitar “traços”
-  const adjustedBoxData = apiData.boxplot_data.map((d) => ({
-    x: d.x,
-    y: inflateBoxY(d.y),
-  }));
-
-  const categories = adjustedBoxData.map((d) => d.x);
-  // Mapeia a categoria textual para um X numérico contínuo (1..N)
-  const categoryMap = categories.reduce((acc, c, i) => ((acc[c] = i + 1), acc), {});
-
-  // Bounds (whiskers) com dados ajustados
-  const whiskerBounds = adjustedBoxData.reduce((acc, d) => {
-    acc[d.x] = { lower: d.y[0], upper: d.y[4] };
-    return acc;
-  }, {});
-
-  // Outliers e coloração
-  const outlierValues = (apiData.outliers_data || [])
-    .map((p) => p.outliers ?? p.y)
-    .filter((v, i) => {
-      const x = (apiData.outliers_data || [])[i]?.x;
-      const b = whiskerBounds[x];
-      return b && (v < b.lower || v > b.upper);
-    });
-
-  const minOut = outlierValues.length ? Math.min(...outlierValues) : 0;
-  const maxOut = outlierValues.length ? Math.max(...outlierValues) : 0;
-
-  const coloredOutliers = (apiData.outliers_data || [])
-    .filter((p) => {
-      const b = whiskerBounds[p.x];
-      if (!b) return false;
-      const v = p.outliers ?? p.y;
-      return v < b.lower || v > b.upper;
-    })
-    .map((p) => ({
-      x: categoryMap[p.x], // Usa o mapeamento numérico para o X
-      y: p.outliers ?? p.y,
-      fillColor: getColorForValue(p.outliers ?? p.y, minOut, maxOut),
+  /**
+   * 1) Box data sanitizado (memo)
+   */
+  const adjustedBoxData = useMemo(() => {
+    const src = apiData.boxplot_data || [];
+    return src.map((d) => ({
+      x: d.x,
+      y: sanitizeBox5(d.y),
     }));
+  }, [apiData.boxplot_data]);
 
-  const series = [
-    {
-      name: "Boxplot",
-      type: "boxPlot",
-      data: adjustedBoxData.map((d) => ({ x: categoryMap[d.x], y: d.y })), // Usa o mapeamento numérico para o X
-    },
-    { name: "Outliers", type: "scatter", data: coloredOutliers },
-  ];
+  /**
+   * 2) Categories + map + fences (memo)
+   */
+  const { categories, categoryMap, fencesByCat } = useMemo(() => {
+    const cats = adjustedBoxData.map((d) => d.x);
 
-  // === RÓTULOS MULTILINHA POR ANOTAÇÕES (sem sobreposição) ===
-  const splitAll = categories.map((c) => splitLines(c, 14));
-  const maxLines = Math.max(...splitAll.map((ls) => ls.length));
-  const lineH = 13;       // Altura de cada linha
-  const baseOffsetY = 18; // Offset base para a primeira linha
+    const map = new Map();
+    for (let i = 0; i < cats.length; i++) map.set(cats[i], i + 1);
 
-  const labelAnnotations = [];
-  categories.forEach((cat, i) => {
-    const lines = splitAll[i];
-    lines.forEach((text, li) => {
-      labelAnnotations.push({
-        x: i + 1, // 'x' = posição numérica do item (1..N)
-        x2: i + 1,
-        y: 1, // parte inferior do gráfico
-        y2: 1,
-        borderColor: "transparent",
-        label: {
-          borderColor: "transparent",
-          position: "bottom",
-          orientation: "horizontal",
-          offsetY: baseOffsetY + li * lineH,
-          text,
-          style: {
-            background: "transparent",
-            color: "#666",
-            fontSize: "10px",
-            fontFamily: "Helvetica, Arial, sans-serif",
-            fontWeight: 400,
-            textAlign: "center",
+    const fences = new Map();
+    for (const d of adjustedBoxData) {
+      const y = d.y;
+      fences.set(d.x, { low: y?.[0], high: y?.[4] });
+    }
+
+    return { categories: cats, categoryMap: map, fencesByCat: fences };
+  }, [adjustedBoxData]);
+
+  /**
+   * 3) Outliers em bins (com caps + stride) para não travar
+   * - sem Math.max(...arrayGrande)
+   * - limita varredura do payload e quantidade desenhada
+   */
+  const { outlierSeries, outlierSeriesColors } = useMemo(() => {
+    const raw = apiData.outliers_data || [];
+    if (!raw.length || !categories.length) {
+      return { outlierSeries: [], outlierSeriesColors: [] };
+    }
+
+    // stride para limitar varredura
+    const stepRaw = Math.max(1, Math.ceil(raw.length / MAX_OUTLIERS_SCANNED));
+
+    // 1ª fase: filtra outliers válidos e calcula maxDist (sem arrays gigantes)
+    const kept = [];
+    let maxDist = 1e-9;
+
+    for (let i = 0; i < raw.length; i += stepRaw) {
+      const p = raw[i];
+      const f = fencesByCat.get(p.x);
+      const yv = +p.y;
+      if (!f || !Number.isFinite(yv)) continue;
+
+      let dist = 0;
+      if (yv < f.low) dist = f.low - yv;
+      else if (yv > f.high) dist = yv - f.high;
+      else continue;
+
+      const xi = categoryMap.get(p.x);
+      if (!xi) continue;
+
+      kept.push({ x: xi, y: yv, dist });
+      if (dist > maxDist) maxDist = dist;
+    }
+
+    if (!kept.length) return { outlierSeries: [], outlierSeriesColors: [] };
+
+    // cap final do que vai ser desenhado (amostragem)
+    let points = kept;
+    if (points.length > MAX_OUTLIERS_DRAWN) {
+      const step = Math.max(1, Math.ceil(points.length / MAX_OUTLIERS_DRAWN));
+      const sampled = [];
+      for (let i = 0; i < points.length; i += step) sampled.push(points[i]);
+      points = sampled;
+    }
+
+    // prepara cores por bin
+    const DARK = '#1F2937';
+    const LIGHT = '#CBD5E1';
+    const binColors = Array.from({ length: BIN_COUNT }, (_, i) =>
+      lerpColorHex(DARK, LIGHT, i / (BIN_COUNT - 1))
+    );
+
+    // bins -> poucas séries = leve
+    const bins = Array.from({ length: BIN_COUNT }, () => []);
+    for (const p of points) {
+      const t = p.dist / maxDist; // 0..1
+      const bi = Math.min(BIN_COUNT - 1, Math.max(0, Math.floor(t * (BIN_COUNT - 1))));
+      bins[bi].push({ x: p.x, y: p.y });
+    }
+
+    // monta séries somente dos bins usados + lista de cores alinhada com as séries
+    const series = [];
+    const colorsUsed = [];
+    for (let i = 0; i < BIN_COUNT; i++) {
+      if (!bins[i].length) continue;
+      series.push({ name: `_out_${i}`, type: 'scatter', data: bins[i] });
+      colorsUsed.push(binColors[i]);
+    }
+
+    return { outlierSeries: series, outlierSeriesColors: colorsUsed };
+  }, [apiData.outliers_data, categories.length, categoryMap, fencesByCat]);
+
+  /**
+   * 4) Labels via annotations (com cap por N de categorias)
+   * Se tiver categoria demais, desliga (senão vira muita coisa no SVG)
+   */
+  const { labelAnnotations, maxLines, baseOffsetY, lineH, labelsEnabled } = useMemo(() => {
+    if (!categories.length || categories.length > MAX_LABEL_CATS) {
+      return {
+        labelAnnotations: [],
+        maxLines: 0,
+        baseOffsetY: 0,
+        lineH: 0,
+        labelsEnabled: false,
+      };
+    }
+
+    const splitAll = categories.map((c) => splitLines(c, 14));
+    const mLines = splitAll.length ? Math.max(...splitAll.map((ls) => ls.length)) : 1;
+
+    const _lineH = 13;
+    const _baseOffsetY = 18;
+
+    const anns = [];
+    for (let i = 0; i < categories.length; i++) {
+      const lines = splitAll[i];
+      for (let li = 0; li < lines.length; li++) {
+        anns.push({
+          x: i + 1,
+          x2: i + 1,
+          y: 1,
+          y2: 1,
+          borderColor: 'transparent',
+          label: {
+            borderColor: 'transparent',
+            position: 'bottom',
+            orientation: 'horizontal',
+            offsetY: _baseOffsetY + li * _lineH,
+            text: lines[li],
+            style: {
+              background: 'transparent',
+              color: '#64748B',
+              fontSize: '10px',
+              fontFamily: 'Inter, system-ui, sans-serif',
+              fontWeight: 400,
+              textAlign: 'center',
+            },
           },
-        },
-      });
-    });
-  });
+        });
+      }
+    }
 
-  const options = {
-    annotations: { xaxis: labelAnnotations },
-    chart: {
-      type: "boxPlot",
-      height: 350,
-      toolbar: { show: false },
-      background: "transparent",
-    },
-    title: {
-      text: chartTitle,
-      align: "left",
-      style: { fontSize: "14px", fontWeight: "bold", color: "#373d3f" },
-    },
-    plotOptions: {
-      boxPlot: {
-        colors: { upper: "#2E7D9C", lower: "#2E7D9C" },
+    return { labelAnnotations: anns, maxLines: mLines, baseOffsetY: _baseOffsetY, lineH: _lineH, labelsEnabled: true };
+  }, [categories]);
+
+  /**
+   * 5) Series estável (memo)
+   */
+  const series = useMemo(() => {
+    const boxSeries = {
+      name: 'Distribuição',
+      type: 'boxPlot',
+      data: adjustedBoxData.map((d) => ({ x: categoryMap.get(d.x), y: d.y })),
+    };
+    return [boxSeries, ...outlierSeries];
+  }, [adjustedBoxData, categoryMap, outlierSeries]);
+
+  /**
+   * 6) Options estável (memo)
+   */
+  const options = useMemo(() => {
+    // colors: 1º = box; o resto = bins realmente usados (alinhado com series)
+    const colors = ['#053B50', ...outlierSeriesColors];
+
+    // stroke arrays alinhados ao número de séries
+    const strokeWidths = [1.1, ...Array(Math.max(0, series.length - 1)).fill(0)];
+    const strokeColors = ['#053B50', ...Array(Math.max(0, series.length - 1)).fill('transparent')];
+
+    const extraBottom = labelsEnabled ? (20 + baseOffsetY + maxLines * lineH) : 20;
+
+    // tickAmount alto com muita categoria é custo inútil (labels estão hidden)
+    const tickAmount =
+      categories.length <= MAX_TICK_AMOUNT ? categories.length : Math.min(MAX_TICK_AMOUNT, 10);
+
+    return {
+      colors,
+      annotations: labelsEnabled ? { xaxis: labelAnnotations } : undefined,
+
+      chart: {
+        type: 'boxPlot',
+        height: 350,
+        toolbar: { show: false },
+        background: 'transparent',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        animations: {
+          enabled: false, // elimina loops internos e “updated storms”
+        },
       },
-    },
-    stroke: { width: 1.5, colors: ["#000"] },
-    xaxis: {
-      type: "numeric",
-      min: 0.5,
-      max: categories.length + 0.5,
-      tickAmount: categories.length,
-      labels: { show: false }, // <<< esconde labels nativos (agora só aparecem as anotações)
-      axisBorder: { show: false },
-      axisTicks: { show: false },
-      tooltip: { enabled: false },
-    },
-    yaxis: {
-      title: { text: "Média" },
-      min: 1,
-      max: 4.2, // respiro maior no topo
-      tickAmount: 7,
-      labels: { formatter: (v) => v.toFixed(2) },
-    },
-    grid: {
-      borderColor: "#e0e6ed",
-      padding: { left: 10, bottom: 20 + baseOffsetY + (maxLines) * lineH },
-      xaxis: { lines: { show: false } },
-      yaxis: { lines: { show: true } },
-    },
-    legend: { show: false },
-    markers: { size: 4, strokeWidth: 0, shape: "circle" },
-    tooltip: {
-      shared: false,
-      intersect: true,
-      custom: ({ seriesIndex, dataPointIndex, w }) => {
-        if (seriesIndex === 0) {
-          const stats = w.config.series[0].data[dataPointIndex].y;
-          const originalXValue = categories[dataPointIndex];
-          return (
-            `<div class="apexcharts-tooltip-box">` +
-            `<strong>Item: ${originalXValue}</strong><br>` +
-            `Max: ${stats[4].toFixed(2)}<br>` +
-            `Q3: ${stats[3].toFixed(2)}<br>` +
-            `Mediana: ${stats[2].toFixed(2)}<br>` +
-            `Q1: ${stats[1].toFixed(2)}<br>` +
-            `Min: ${stats[0].toFixed(2)}` +
-            `</div>`
-          );
-        }
-        const p = w.config.series[1].data[dataPointIndex];
-        return `<div class="apexcharts-tooltip-box">Outlier: ${p.y.toFixed(2)}</div>`;
+
+      legend: { show: false },
+
+      title: {
+        text: chartTitle,
+        align: 'left',
+        style: { fontSize: '14px', fontWeight: 600, color: '#1E293B' },
       },
-    },
-  };
+
+      plotOptions: {
+        boxPlot: {
+          colors: { upper: '#2E7D9C', lower: '#5EB2D4' },
+          columnWidth: '48%',
+        },
+      },
+
+      dataLabels: { enabled: false },
+
+      stroke: {
+        show: true,
+        width: strokeWidths,
+        colors: strokeColors,
+      },
+
+      fill: { opacity: 0.85 },
+
+      markers: {
+        size: 4,
+        strokeWidth: 0,
+        shape: 'circle',
+      },
+
+      xaxis: {
+        type: 'numeric',
+        min: 0.5,
+        max: categories.length + 0.5,
+        tickAmount,
+        labels: { show: false },
+        axisBorder: { show: false },
+        axisTicks: { show: false },
+        tooltip: { enabled: false },
+      },
+
+      yaxis: {
+        min: 1,
+        max: 4.5,
+        tickAmount: 7,
+        labels: {
+          style: { colors: '#64748B' },
+          formatter: (v) => Number(v).toFixed(2),
+        },
+      },
+
+      grid: {
+        borderColor: '#F1F5F9',
+        padding: { left: 10, bottom: extraBottom },
+        yaxis: { lines: { show: true } },
+        xaxis: { lines: { show: false } },
+      },
+
+      tooltip: {
+        shared: false,
+        intersect: true,
+        custom: ({ seriesIndex, dataPointIndex, w }) => {
+          if (seriesIndex === 0) {
+            const stats = w.config.series[0].data[dataPointIndex].y;
+            const item = categories[dataPointIndex] ?? '';
+            return `
+              <div style="padding: 12px; border-radius: 8px; background: #FFF; border: 1px solid #E2E8F0;">
+                <div style="font-weight: 700; color: #1E293B">Item: ${item}</div>
+                <div style="font-size: 12px; color: #64748B;">
+                  <div>MAX.: <b>${stats[4]}</b></div>
+                  <div>Q3: <b>${stats[3]}</b></div>
+                  <div>Mediana: <b>${stats[2]}</b></div>
+                  <div>Q1: <b>${stats[1]}</b></div>
+                  <div>MIN.: <b>${stats[0]}</b></div>
+                </div>
+              </div>`;
+          }
+
+          // Outliers (qualquer uma das séries bins)
+          const p = w.config.series[seriesIndex]?.data?.[dataPointIndex];
+          if (!p) return '';
+          return `
+            <div style="padding: 10px; border-radius: 8px; background: #FFF; border: 1px solid #E2E8F0;">
+              <div style="font-weight: 700; color: #1E293B">Outlier</div>
+              <div style="font-size: 12px; color: #64748B;">Valor: <b>${Number(p.y).toFixed(2)}</b></div>
+            </div>`;
+        },
+      },
+    };
+  }, [
+    chartTitle,
+    categories,
+    labelsEnabled,
+    labelAnnotations,
+    maxLines,
+    baseOffsetY,
+    lineH,
+    series.length,
+    outlierSeriesColors,
+  ]);
 
   return (
-    <div style={{ width: "100%", height: "350px" }}>
+    <div style={{ width: '100%', height: '350px' }}>
       <Chart options={options} series={series} type="boxPlot" height={350} />
     </div>
   );
-}
+});

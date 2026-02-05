@@ -5,31 +5,36 @@ import { promises as fs } from 'fs';
 
 export async function GET() {
   try {
-    const filePath = path.join(process.cwd(), 'src', 'app', 'banco', 'DISCENTE.json');
+    // 1. Ajuste do caminho para o arquivo .csv
+    // Certifique-se que o arquivo DISCENTE.csv está na pasta src/app/banco/
+    const filePath = path.join(process.cwd(), 'src', 'app', 'banco', 'DISCENTE.csv');
 
-    // 1. Lê o arquivo como BUFFER (binário), não como string UTF-8
-    // Isso é muito mais rápido e gasta menos memória
+    // 2. Lê o arquivo como BUFFER (binário)
+    // Mantemos essa estratégia pois é muito performática para arquivos grandes
     const fileBuffer = await fs.readFile(filePath);
 
-    // 2. Retorna uma NextResponse manual
-    // EVITAMOS o JSON.parse() e o NextResponse.json()
-    // Por que? Porque o arquivo já é um JSON. Não precisamos carregar na memória do servidor
-    // como objeto para depois transformar em texto de novo. Enviamos o "puro" do disco.
+    // 3. Retorna a resposta
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
-        'Content-Type': 'application/json',
-        // 3. ESSENCIAL: Envia o tamanho total para a barra de progresso do frontend
+        // MUDANÇA IMPORTANTE: O tipo agora é text/csv
+        // Adicionamos charset=utf-8 para garantir que os acentos não quebrem no navegador
+        'Content-Type': 'text/csv; charset=utf-8',
+        
+        // Mantemos o Content-Length para sua barra de progresso no frontend funcionar
         'Content-Length': fileBuffer.length.toString(),
-        // Dica: Next.js em produção (Vercel/Node) aplicará Gzip/Brotli automaticamente 
-        // sobre este buffer se o navegador suportar.
+        
+        // Opcional: Cachear no navegador por 1 hora (se os dados não mudam com frequência)
+        // 'Cache-Control': 'public, max-age=3600, must-revalidate',
       },
     });
 
   } catch (error) {
-    console.error("Erro ao ler o arquivo de dados:", error);
+    console.error("Erro ao ler o arquivo CSV:", error);
+    
+    // Em caso de erro, retornamos um JSON avisando
     return new NextResponse(
-      JSON.stringify({ message: "Erro ao carregar os dados." }),
+      JSON.stringify({ message: "Erro ao carregar o arquivo CSV de dados." }),
       { 
         status: 500, 
         headers: { 'Content-Type': 'application/json' } 

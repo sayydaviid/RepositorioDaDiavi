@@ -2,11 +2,11 @@
   "name": "avaliaa",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "concurrently -n \"NEXTJS,BROWSER\" -c \"blue,cyan\" \"next dev\" \"wait-on -v http-get://127.0.0.1:3000 && open-cli http://localhost:3000/avaliacao/avalia\"",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+"scripts": {
+  "dev": "concurrently -n \"NEXTJS,BROWSER\" -c \"blue,cyan\" \"next dev --webpack\" \"wait-on -v http-get://127.0.0.1:3000 && open-cli http://localhost:3000/avaliacao/avalia\"",
+  "build": "next build",
+  "start": "next start",
+  "lint": "eslint" 
   },
   "dependencies": {
     "@sgratzl/chartjs-chart-boxplot": "^4.4.4",
@@ -16,10 +16,10 @@
     "apexcharts": "^5.3.5",
     "chart.js": "^4.5.0",
     "chartjs-plugin-datalabels": "^2.2.0",
-    "jspdf": "^3.0.3",
+    "jspdf": "^4.1.0",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.542.0",
-    "next": "15.5.9",
+    "next": "^16.1.6",
     "nprogress": "^0.2.0",
     "papaparse": "^5.5.3",
     "pdf-lib": "^1.17.1",

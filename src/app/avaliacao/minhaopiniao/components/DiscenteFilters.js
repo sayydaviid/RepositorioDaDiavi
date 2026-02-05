@@ -134,7 +134,7 @@ export default function DiscenteFilters({
           onChange={handleChange}
           className={styles.filterSelect}
         >
-          <option value="todos">Todos os Campi</option>
+          <option value="todos">Todos os Municipios</option>
           {campusList.map((c, i) => (
             <option key={`${c}-${i}`} value={c}>
               {beautifyLabel(c)}

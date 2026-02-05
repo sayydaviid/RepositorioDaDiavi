@@ -8,17 +8,63 @@ import styles from '../../../styles/page.module.css';
 // 1. Importe o seu Contexto Global
 import { useGlobalData } from '../minhaopiniao/context/DataContext'; 
 
+/* ==========================================================================
+   Função Auxiliar: Parse de CSV
+   (Necessária aqui para converter o texto bruto antes de salvar no Cache Global)
+   ========================================================================== */
+function parseCSV(csvText) {
+  const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+  // Remove o cabeçalho original (pois os índices mudaram/estão duplicados na fonte)
+  const dataRows = lines.slice(1); 
+
+  return dataRows.map(line => {
+    const columns = [];
+    let currentVal = '';
+    let insideQuote = false;
+
+    // Parser manual para lidar com aspas e vírgulas internas
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        insideQuote = !insideQuote;
+      } else if (char === ',' && !insideQuote) {
+        columns.push(currentVal.trim());
+        currentVal = '';
+      } else {
+        currentVal += char;
+      }
+    }
+    columns.push(currentVal.trim());
+
+    // Mapeamento idêntico ao da página de dados
+    const rowObj = {
+      CURSO_DISCENTE: columns[3] || 'N/I',
+      CAMPUS_DISCENTE: columns[4] || 'N/I',
+      UNIDADE_DISCENTE: columns[4] || 'N/I', // Fallback usando Campus
+    };
+
+    // Mapeia Pergunta_1 a Pergunta_34
+    for (let q = 1; q <= 34; q++) {
+      rowObj[`Pergunta_${q}`] = columns[5 + q]; 
+    }
+
+    return rowObj;
+  });
+}
+
+/* ==========================================================================
+   Componente Principal
+   ========================================================================== */
 export default function MinhaOpiniaoPage() {
   const router = useRouter();
   
   // 2. Acesse o cache e a função de salvar
   const { cache, saveToCache } = useGlobalData();
 
-  // Mapeamento de rota para a chave do cache e endpoint
   const routeConfigs = {
-    '/avaliacao/minhaopiniao/discente': { key: 'discente', url: '/api/discente' },
-    '/avaliacao/minhaopiniao/docente': { key: 'docente', url: '/api/docente' },
-    '/avaliacao/minhaopiniao/tecnico': { key: 'tecnico', url: '/api/tecnico' },
+    '/avaliacao/minhaopiniao/discente': { key: 'discente', url: '/api/discente', type: 'csv' }, // Marquei como CSV
+    '/avaliacao/minhaopiniao/docente': { key: 'docente', url: '/api/docente', type: 'json' }, // Mantive JSON por enquanto (se mudou, altere aqui)
+    '/avaliacao/minhaopiniao/tecnico': { key: 'tecnico', url: '/api/tecnico', type: 'json' },
   };
 
   const prefetchFor = useCallback(
@@ -30,8 +76,8 @@ export default function MinhaOpiniaoPage() {
       const config = routeConfigs[href];
       if (!config) return;
 
-      // Se o dado JÁ está no cache, não fazemos nada (economia de banda)
-      if (cache[config.key]) {
+      // Se o dado JÁ está no cache, não fazemos nada
+      if (cache[config.key] && cache[config.key].length > 0) {
         console.log(`Cache encontrado para ${config.key}, ignorando fetch.`);
         return;
       }
@@ -40,26 +86,33 @@ export default function MinhaOpiniaoPage() {
       try {
         console.log(`Iniciando prefetch de dados para: ${config.key}`);
         const res = await fetch(config.url);
-        const data = await res.json();
-        
-        // Ajuste para pegar a estrutura correta do seu JSON [2].data
-        const finalData = data[2]?.data || data;
+
+        let finalData = [];
+
+        // --- CORREÇÃO AQUI ---
+        // Verifica se devemos tratar como CSV ou JSON baseado na config ou resposta
+        if (config.type === 'csv') {
+            const textData = await res.text(); // Baixa como TEXTO
+            finalData = parseCSV(textData);    // Converte para Objeto
+        } else {
+            // Lógica antiga para JSON (Docente/Técnico se ainda forem JSON)
+            const jsonData = await res.json();
+            finalData = jsonData[2]?.data || jsonData;
+        }
         
         // Guarda no Contexto Global
         saveToCache(config.key, Array.isArray(finalData) ? finalData : []);
-        console.log(`Dados de ${config.key} guardados no cache com sucesso.`);
+        console.log(`Dados de ${config.key} guardados no cache com sucesso. Registros: ${finalData.length}`);
       } catch (err) {
         console.error(`Erro no prefetch de ${config.key}:`, err);
       }
     },
-    [router, cache, saveToCache]
+    [router, cache, saveToCache] // Dependências
   );
 
   const onNavigate = useCallback(
     (e, href) => {
       e.preventDefault();
-      // Não precisamos esperar o prefetch terminar para navegar, 
-      // o prefetch é apenas um bônus de velocidade.
       router.push(href);
     },
     [router]
@@ -68,7 +121,6 @@ export default function MinhaOpiniaoPage() {
   const makeLinkProps = (href) => ({
     href,
     className: styles.ctaPrimary,
-    // Ativa o prefetch no hover (desktop), foco (teclado) ou toque (mobile)
     onMouseEnter: () => prefetchFor(href),
     onFocus: () => prefetchFor(href),
     onTouchStart: () => prefetchFor(href), 

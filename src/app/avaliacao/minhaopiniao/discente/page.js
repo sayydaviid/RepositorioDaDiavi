@@ -26,6 +26,70 @@ const DEFAULT_FILTERS = {
 };
 
 /* ==========================================================================
+   PARSER DE CSV ROBUSTO (Máquina de Estado)
+   Ajustado para o novo layout: Curso (3), Campus (4), Unidade/Instituto (5)
+   ========================================================================== */
+function parseCSV(text) {
+  const rows = [];
+  let currentRow = [];
+  let currentVal = '';
+  let insideQuote = false;
+  const cleanText = text.replace(/\r\n/g, '\n');
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const char = cleanText[i];
+    const nextChar = cleanText[i + 1];
+
+    if (char === '"') {
+      if (insideQuote && nextChar === '"') {
+        currentVal += '"';
+        i++; 
+      } else {
+        insideQuote = !insideQuote;
+      }
+    } 
+    else if (char === ',' && !insideQuote) {
+      currentRow.push(currentVal.trim());
+      currentVal = '';
+    } 
+    else if (char === '\n' && !insideQuote) {
+      currentRow.push(currentVal.trim());
+      if (currentRow.length > 0) rows.push(currentRow);
+      currentRow = [];
+      currentVal = '';
+    } 
+    else {
+      currentVal += char;
+    }
+  }
+  if (currentVal || currentRow.length > 0) {
+    currentRow.push(currentVal.trim());
+    rows.push(currentRow);
+  }
+
+  const dataRows = rows.slice(1);
+  return dataRows.map(columns => {
+    // Verificação de segurança para o número de colunas
+    if (columns.length < 10) return null;
+
+    /* Mapeamento baseado na sua estrutura enviada:
+       0: nome, 1: sexo, 2: tipo, 3: curso, 4: campus, 5: unidade (Instituto), 6: sugestão
+    */
+    const rowObj = {
+      CURSO_DISCENTE: columns[3] || 'N/I',
+      CAMPUS_DISCENTE: columns[4] ? columns[4].replace(/^"|"$/g, '') : 'N/I',
+      UNIDADE_DISCENTE: columns[5] ? columns[5].replace(/^"|"$/g, '') : 'N/I', // <--- Agora captura o Instituto
+    };
+
+    // Perguntas começam após a Sugestão (Índice 6), portanto no Índice 7
+    for (let q = 1; q <= 34; q++) {
+      rowObj[`Pergunta_${q}`] = columns[6 + q]; 
+    }
+    return rowObj;
+  }).filter(Boolean);
+}
+
+/* ==========================================================================
    Componente de Loading Overlay
    ========================================================================== */
 function LoadingOverlay({ progress }) {
@@ -39,7 +103,7 @@ function LoadingOverlay({ progress }) {
       <div style={{ width: '350px', textAlign: 'center', padding: '2rem' }}>
         <Loader2 style={{ width: '48px', height: '48px', color: '#FF8E29', marginBottom: '1.5rem', animation: 'spin 1s linear infinite' }} />
         <h2 style={{ fontSize: '1.5rem', color: '#1a1a1a', marginBottom: '0.5rem', fontWeight: '700' }}>Carregando Dados</h2>
-        <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1rem' }}>Preparando análise institucional...</p>
+        <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1rem' }}>Mapeando Institutos e Unidades...</p>
         <div style={{ width: '100%', height: '12px', backgroundColor: '#f0f0f0', borderRadius: '10px', overflow: 'hidden', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)' }}>
           <div style={{ width: `${progress}%`, height: '100%', backgroundColor: '#FF8E29', transition: 'width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1)' }} />
         </div>
@@ -54,7 +118,6 @@ function LoadingOverlay({ progress }) {
 }
 
 export default function DiscentePage() {
-  // 1. Acesso ao Cache Global
   const { cache, saveToCache } = useGlobalData();
 
   const [allData, setAllData] = useState([]);
@@ -65,9 +128,6 @@ export default function DiscentePage() {
   const [selectedFiltersA, setSelectedFiltersA] = useState(DEFAULT_FILTERS);
   const [selectedFiltersB, setSelectedFiltersB] = useState(DEFAULT_FILTERS);
 
-  /* =========================
-     Efeito de Carregamento com Lógica de Cache
-  ========================= */
   useEffect(() => {
     if (cache.discente && cache.discente.length > 0) {
       setAllData(cache.discente);
@@ -97,31 +157,22 @@ export default function DiscentePage() {
         }
 
         const allChunks = new Uint8Array(loadedSize);
-        let position = 0;
-        for(let chunk of chunks) {
-          allChunks.set(chunk, position);
-          position += chunk.length;
-        }
+        let pos = 0;
+        for(let c of chunks) { allChunks.set(c, pos); pos += c.length; }
+        
+        const data = parseCSV(new TextDecoder("utf-8").decode(allChunks));
 
-        const decodedString = new TextDecoder("utf-8").decode(allChunks);
-        const data = JSON.parse(decodedString);
-        const studentData = data[2]?.data || data;
-        const finalData = Array.isArray(studentData) ? studentData : [];
-
-        saveToCache('discente', finalData);
-        setAllData(finalData);
+        saveToCache('discente', data);
+        setAllData(data);
         setTimeout(() => setLoading(false), 600);
       } catch (err) {
-        console.error('Erro ao carregar dados:', err);
+        console.error('Erro ao carregar:', err);
         setLoading(false);
       }
     }
     loadData();
   }, [cache.discente, saveToCache]);
 
-  /* =========================
-     Cálculos Memoizados
-  ========================= */
   const filteredDataA = useMemo(() => loading ? [] : applyFilters(allData, selectedFiltersA), [allData, selectedFiltersA, loading]);
   const filteredDataB = useMemo(() => loading ? [] : applyFilters(allData, selectedFiltersB), [allData, selectedFiltersB, loading]);
 
@@ -206,17 +257,8 @@ export default function DiscentePage() {
           ) : (
             <div className={styles.singleGrid}>
               {chartsByDimensionA.map(({ dimensionName, chartData }) => (
-                <div 
-                  key={`dim-card-${dimensionName}`} 
-                  className={styles.chartContainerCard}
-                  // AJUSTE: Expande para largura total se for o único gráfico exibido
-                  style={chartsByDimensionA.length === 1 ? { gridColumn: '1 / -1' } : {}}
-                >
-                  <QuestionChart
-                    chartData={chartData}
-                    title={dimensionName}
-                    questionMap={questionMapping}
-                  />
+                <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard} style={chartsByDimensionA.length === 1 ? { gridColumn: '1 / -1' } : {}}>
+                  <QuestionChart chartData={chartData} title={dimensionName} questionMap={questionMapping} />
                 </div>
               ))}
             </div>
@@ -230,7 +272,6 @@ export default function DiscentePage() {
 /* ==========================================================================
    Lógica de Comparação e Helpers
    ========================================================================== */
-
 function CompareDimensions({ chartsA, chartsB, questionMap, styles }) {
   const aMap = new Map((chartsA || []).map((c) => [c.dimensionName, c]));
   const bMap = new Map((chartsB || []).map((c) => [c.dimensionName, c]));
@@ -271,29 +312,39 @@ function applyFilters(allData, selectedFilters) {
 function buildFilterOptions(allData, selectedFilters) {
   if (!Array.isArray(allData) || !allData.length) return { campus: [], unidades: [], cursos: [] };
   const f = selectedFilters || { campus: 'todos', unidade: 'todos', curso: 'todos' };
+  
   function keepRow(row, ignoreKey) {
     const cOk = ignoreKey === 'CAMPUS_DISCENTE' ? true : rowMatch(row.CAMPUS_DISCENTE, f.campus);
     const uOk = ignoreKey === 'UNIDADE_DISCENTE' ? true : rowMatch(row.UNIDADE_DISCENTE, f.unidade);
     const crOk = ignoreKey === 'CURSO_DISCENTE' ? true : rowMatch(row.CURSO_DISCENTE, f.curso);
     return cOk && uOk && crOk;
   }
+
+  function isValidLabel(text) {
+    if (!text) return false;
+    const str = String(text).trim();
+    if (str.length < 2 || str.length > 80) return false; 
+    if (/^\d+$/.test(str)) return false; 
+    const lower = str.toLowerCase();
+    return !['não informado', 'nao informado', 'n/i', 'ni'].includes(lower);
+  }
+
   function uniq(key) {
     const s = new Set();
-    for (const r of allData) { if (keepRow(r, key)) { const v = norm(r[key]); if (v) s.add(v); } }
+    for (const r of allData) { 
+      if (keepRow(r, key)) { 
+        const v = norm(r[key]); 
+        if (isValidLabel(v)) s.add(v); 
+      } 
+    }
     return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }
+
   return { campus: uniq('CAMPUS_DISCENTE'), unidades: uniq('UNIDADE_DISCENTE'), cursos: uniq('CURSO_DISCENTE') };
 }
 
 function sanitizeFilters(allData, filters) {
-  let next = { ...filters };
-  for (let i = 0; i < 2; i++) {
-    const opts = buildFilterOptions(allData, next);
-    if (next.campus !== 'todos' && !opts.campus.includes(norm(next.campus))) next.campus = 'todos';
-    if (next.unidade !== 'todos' && !opts.unidades.includes(norm(next.unidade))) next.unidade = 'todos';
-    if (next.curso !== 'todos' && !opts.cursos.includes(norm(next.curso))) next.curso = 'todos';
-  }
-  return next;
+  return filters; 
 }
 
 function calcTopUnit(data) {
@@ -307,18 +358,28 @@ function buildChartsByDimension(filteredData, bgColor, borderColor, selectedFilt
   if (!dimensionMapping) return [];
   const sDim = selectedFilters?.dimensao || 'todas';
   const sQ = selectedFilters?.pergunta || 'todas';
+
   return Object.entries(dimensionMapping)
     .filter(([name]) => sDim === 'todas' || name === sDim)
-    .map(([name, questionKeys]) => {
-      let keys = Array.isArray(questionKeys) ? [...questionKeys] : [];
-      if (sQ !== 'todas') keys = keys.includes(sQ) ? [sQ] : [];
-      if (!keys.length) return null;
+    .map(([name, questionCodes]) => {
+      let codes = Array.isArray(questionCodes) ? [...questionCodes] : [];
+      if (sQ !== 'todas') codes = codes.includes(sQ) ? [sQ] : [];
+      
       const labels = [], data = [];
-      for (const key of keys) {
-        const scores = filteredData.map(i => ratingToScore[i[key]]).filter(v => v !== null && v !== undefined);
+      for (const code of codes) {
+        const match = code.match(/\.(\d+)$/);
+        const dataKey = match ? `Pergunta_${match[1]}` : code;
+
+        const scores = filteredData.map(i => {
+          const val = i[dataKey];
+          const numeric = parseFloat(val);
+          if (!isNaN(numeric)) return numeric;
+          return ratingToScore ? ratingToScore[val] : null;
+        }).filter(v => v !== null && v !== undefined);
+        
         if (scores.length) {
           const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-          labels.push(key);
+          labels.push(code);
           data.push(Number(avg.toFixed(2)));
         }
       }

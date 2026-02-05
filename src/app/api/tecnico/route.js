@@ -5,21 +5,25 @@ import { promises as fs } from 'fs';
 
 export async function GET() {
   try {
-    // 1. Caminho para o arquivo dos TÉCNICOS
-    const filePath = path.join(process.cwd(), 'src', 'app', 'banco', 'TECNICO.json');
+    // 1. Ajuste do caminho para o novo arquivo CSV dos TÉCNICOS
+    const filePath = path.join(process.cwd(), 'src', 'app', 'banco', 'TECNICO.csv');
 
-    // 2. Lê o arquivo como BUFFER (Binário)
-    // Mais rápido que ler como string, pois não há processamento de encoding no servidor.
+    // 2. Lê o arquivo como BUFFER
+    // Mantemos a performance máxima: bytes direto do disco para a rede
     const fileBuffer = await fs.readFile(filePath);
 
-    // 3. Retorna o Buffer diretamente para o cliente
+    // 3. Retorna a resposta com cabeçalhos de texto CSV
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
-        'Content-Type': 'application/json',
-        // 4. ESSENCIAL: Permite que o frontend calcule o progresso de 0 a 100%
+        // Define o MIME type como CSV e garante a codificação UTF-8 para acentos
+        'Content-Type': 'text/csv; charset=utf-8',
+        
+        // Essencial: Envia o tamanho total para o LoadingOverlay do frontend
         'Content-Length': fileBuffer.length.toString(),
-        // O Next.js tratará a compressão Gzip/Brotli automaticamente em produção.
+        
+        // Controle de cache para evitar dados obsoletos durante a navegação
+        'Cache-Control': 'no-store, max-age=0',
       },
     });
 
@@ -28,7 +32,7 @@ export async function GET() {
     
     return new NextResponse(
       JSON.stringify({ 
-        message: "Erro ao carregar os dados dos técnicos.",
+        message: "Erro ao carregar o arquivo CSV dos técnicos.",
         error: error.message 
       }),
       { 

@@ -25,6 +25,84 @@ const DEFAULT_FILTERS = {
 };
 
 /* ==========================================================================
+   PARSER ROBUSTO (MÁQUINA DE ESTADO)
+   Filtra docentes com mais de 3 respostas nulas (NULL).
+   ========================================================================== */
+function parseCSV(text) {
+  const rows = [];
+  let currentRow = [];
+  let currentVal = '';
+  let insideQuote = false;
+  const cleanText = text.replace(/\r\n/g, '\n');
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const char = cleanText[i];
+    const nextChar = cleanText[i + 1];
+
+    if (char === '"') {
+      if (insideQuote && nextChar === '"') {
+        currentVal += '"';
+        i++; 
+      } else {
+        insideQuote = !insideQuote;
+      }
+    } 
+    else if (char === ',' && !insideQuote) {
+      currentRow.push(currentVal.trim());
+      currentVal = '';
+    } 
+    else if (char === '\n' && !insideQuote) {
+      currentRow.push(currentVal.trim());
+      if (currentRow.length > 0) rows.push(currentRow);
+      currentRow = [];
+      currentVal = '';
+    } 
+    else {
+      currentVal += char;
+    }
+  }
+
+  if (currentVal || currentRow.length > 0) {
+    currentRow.push(currentVal.trim());
+    rows.push(currentRow);
+  }
+
+  const headers = rows[0]; 
+  const dataRows = rows.slice(1);
+
+  return dataRows.map(columns => {
+    if (columns.length < 40) return null;
+
+    // --- LÓGICA DE FILTRAGEM DE NULLS ---
+    // Índices 9 a 56 são Pergunta_35 a Pergunta_82
+    let nullCount = 0;
+    for (let j = 9; j <= 56; j++) {
+      const val = columns[j];
+      if (!val || val === 'NULL' || val === 'N/I') {
+        nullCount++;
+      }
+    }
+
+    // Se tiver mais de 3 nulls, o docente não entra na contagem nem na análise
+    if (nullCount > 3) return null;
+
+    const rowObj = {
+      CARGO_DOCENTE: columns[5] || 'N/I',
+      UND_LOTACAO_DOCENTE: columns[6] || 'N/I',
+    };
+
+    // Mapeia perguntas dinamicamente baseado nos headers (Pergunta_35...)
+    headers.forEach((header, index) => {
+      if (header.startsWith('Pergunta_')) {
+        rowObj[header] = columns[index];
+      }
+    });
+
+    return rowObj;
+  }).filter(Boolean);
+}
+
+/* ==========================================================================
    Componente de Loading Overlay
    ========================================================================== */
 function LoadingOverlay({ progress }) {
@@ -38,7 +116,7 @@ function LoadingOverlay({ progress }) {
       <div style={{ width: '350px', textAlign: 'center', padding: '2rem' }}>
         <Loader2 style={{ width: '48px', height: '48px', color: '#FF8E29', marginBottom: '1.5rem', animation: 'spin 1s linear infinite' }} />
         <h2 style={{ fontSize: '1.5rem', color: '#1a1a1a', marginBottom: '0.5rem', fontWeight: '700' }}>Carregando Docentes</h2>
-        <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1rem' }}>Sincronizando dados de autoavaliação...</p>
+        <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1rem' }}>Sincronizando dados e filtrando inconsistências...</p>
         <div style={{ width: '100%', height: '12px', backgroundColor: '#f0f0f0', borderRadius: '10px', overflow: 'hidden', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)' }}>
           <div style={{ width: `${progress}%`, height: '100%', backgroundColor: '#FF8E29', transition: 'width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1)' }} />
         </div>
@@ -53,7 +131,6 @@ function LoadingOverlay({ progress }) {
 }
 
 export default function DocentePage() {
-  // 1. Acesso ao Cache Global
   const { cache, saveToCache } = useGlobalData();
 
   const [allData, setAllData] = useState([]);
@@ -93,18 +170,13 @@ export default function DocentePage() {
         }
 
         const allChunks = new Uint8Array(loadedSize);
-        let position = 0;
-        for(let chunk of chunks) {
-          allChunks.set(chunk, position);
-          position += chunk.length;
-        }
+        let pos = 0;
+        for(let c of chunks) { allChunks.set(c, pos); pos += c.length; }
 
-        const data = JSON.parse(new TextDecoder("utf-8").decode(allChunks));
-        const teacherData = data[2]?.data || data;
-        const finalData = Array.isArray(teacherData) ? teacherData : [];
+        const data = parseCSV(new TextDecoder("utf-8").decode(allChunks));
 
-        saveToCache('docente', finalData);
-        setAllData(finalData);
+        saveToCache('docente', data);
+        setAllData(data);
         setTimeout(() => setLoading(false), 600);
       } catch (err) {
         console.error('Erro ao carregar dados:', err);
@@ -114,9 +186,6 @@ export default function DocentePage() {
     loadTeacherData();
   }, [cache.docente, saveToCache]);
 
-  /* =========================
-     Cálculos Memoizados
-  ========================= */
   const filteredDataA = useMemo(() => loading ? [] : applyFiltersDocente(allData, selectedFiltersA), [allData, selectedFiltersA, loading]);
   const filteredDataB = useMemo(() => loading ? [] : applyFiltersDocente(allData, selectedFiltersB), [allData, selectedFiltersB, loading]);
 
@@ -133,23 +202,13 @@ export default function DocentePage() {
 
   const handleFilterChangeA = (e) => {
     const { name, value } = e.target;
-    if (name === 'dimensao') {
-      setSelectedFiltersA((prev) => ({ ...prev, dimensao: value, pergunta: 'todas' }));
-      return;
-    }
     setSelectedFiltersA((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleFilterChangeB = (e) => {
     const { name, value } = e.target;
-    if (name === 'dimensao') {
-      setSelectedFiltersB((prev) => ({ ...prev, dimensao: value, pergunta: 'todas' }));
-      return;
-    }
     setSelectedFiltersB((prev) => ({ ...prev, [name]: value }));
   };
-
-  const specialPairSideBySide = compareEnabled && chartsByDimensionA.length === 1 && chartsByDimensionB.length === 1;
 
   return (
     <div className={styles.container}>
@@ -194,41 +253,23 @@ export default function DocentePage() {
 
         <div className={styles.chartsMainContainer}>
           {compareEnabled ? (
-            specialPairSideBySide ? (
-              <section className={styles.dimensionWrapper}>
-                <div className={styles.equalGrid}>
-                  <div className={styles.chartContainerCard}>
-                    <QuestionChart chartData={chartsByDimensionA[0].chartData} title={`${chartsByDimensionA[0].dimensionName} (A)`} questionMap={questionMappingDocente} />
-                  </div>
-                  <div className={styles.chartContainerCard}>
-                    <QuestionChart chartData={chartsByDimensionB[0].chartData} title={`${chartsByDimensionB[0].dimensionName} (B)`} questionMap={questionMappingDocente} />
-                  </div>
-                </div>
-              </section>
-            ) : (
-              chartsByDimensionA.map(({ dimensionName, chartData }) => {
-                const b = bMap.get(dimensionName);
-                return (
-                  <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
-                    <div className={styles.equalGrid}>
-                      <div className={styles.chartContainerCard} style={!b ? { gridColumn: '1 / -1' } : undefined}>
-                        <QuestionChart chartData={chartData} title={`${dimensionName} (A)`} questionMap={questionMappingDocente} />
-                      </div>
-                      {b && <div className={styles.chartContainerCard}><QuestionChart chartData={b.chartData} title={`${dimensionName} (B)`} questionMap={questionMappingDocente} /></div>}
+            chartsByDimensionA.map(({ dimensionName, chartData }) => {
+              const b = bMap.get(dimensionName);
+              return (
+                <section key={`dim-section-${dimensionName}`} className={styles.dimensionWrapper}>
+                  <div className={styles.equalGrid}>
+                    <div className={styles.chartContainerCard} style={!b ? { gridColumn: '1 / -1' } : undefined}>
+                      <QuestionChart chartData={chartData} title={`${dimensionName} (A)`} questionMap={questionMappingDocente} />
                     </div>
-                  </section>
-                );
-              })
-            )
+                    {b && <div className={styles.chartContainerCard}><QuestionChart chartData={b.chartData} title={`${dimensionName} (B)`} questionMap={questionMappingDocente} /></div>}
+                  </div>
+                </section>
+              );
+            })
           ) : (
             <div className={styles.singleGrid}>
               {chartsByDimensionA.map(({ dimensionName, chartData }) => (
-                <div 
-                  key={`dim-card-${dimensionName}`} 
-                  className={styles.chartContainerCard}
-                  // AJUSTE: Ocupa toda a largura se for o único gráfico
-                  style={chartsByDimensionA.length === 1 ? { gridColumn: '1 / -1' } : {}}
-                >
+                <div key={`dim-card-${dimensionName}`} className={styles.chartContainerCard} style={chartsByDimensionA.length === 1 ? { gridColumn: '1 / -1' } : {}}>
                   <QuestionChart chartData={chartData} title={dimensionName} questionMap={questionMappingDocente} />
                 </div>
               ))}
@@ -254,37 +295,48 @@ function applyFiltersDocente(allData, selectedFilters) {
 
 function buildDocenteFilterOptions(allData, selectedFilters) {
   if (!Array.isArray(allData) || !allData.length) return { lotacoes: [], cargos: [] };
-  let lotacaoData = allData, cargoData = allData;
-  if (selectedFilters.lotacao !== 'todos') cargoData = cargoData.filter((d) => d.UND_LOTACAO_DOCENTE === selectedFilters.lotacao);
-  if (selectedFilters.cargo !== 'todos') lotacaoData = lotacaoData.filter((d) => d.CARGO_DOCENTE === selectedFilters.cargo);
-  const lotacoesRaw = [...new Set(lotacaoData.map((d) => d.UND_LOTACAO_DOCENTE))].filter(Boolean);
-  const lotacoesSorted = lotacoesRaw.filter((l) => l !== 'NÃO INFORMADO').sort();
-  if (lotacoesRaw.includes('NÃO INFORMADO')) lotacoesSorted.push('NÃO INFORMADO');
-  const cargosFiltered = [...new Set(cargoData.map((d) => d.CARGO_DOCENTE))].filter(Boolean).filter((c) => c !== 'CARGO INDEFINIDO' && c !== 'MEDICO-AREA').sort();
-  return { lotacoes: lotacoesSorted, cargos: cargosFiltered };
+  
+  const uniq = (key, data) => [...new Set(data.map(r => r[key]))].filter(v => v && v !== 'N/I' && v !== 'NÃO INFORMADO').sort();
+
+  return { 
+    lotacoes: uniq('UND_LOTACAO_DOCENTE', allData), 
+    cargos: uniq('CARGO_DOCENTE', allData) 
+  };
 }
 
 function calcTopLotacao(filteredData) {
   if (!filteredData?.length) return 'N/A';
-  const counts = new Map();
-  for (const row of filteredData) { const lotacao = row.UND_LOTACAO_DOCENTE || 'NÃO INFORMADO'; counts.set(lotacao, (counts.get(lotacao) || 0) + 1); }
-  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  const counts = filteredData.reduce((acc, r) => { const l = r.UND_LOTACAO_DOCENTE || 'N/I'; acc[l] = (acc[l] || 0) + 1; return acc; }, {});
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
   return `${top[0]} — ${top[1].toLocaleString('pt-BR')}`;
 }
 
 function buildChartsByDimensionDocente(filteredData, selectedFilters, isB = false) {
   if (!dimensionMappingDocente) return [];
   const sDim = selectedFilters?.dimensao || 'todas', sQ = selectedFilters?.pergunta || 'todas';
-  const entries = sDim !== 'todas' ? [[sDim, dimensionMappingDocente[sDim] || []]] : Object.entries(dimensionMappingDocente);
-  return entries.map(([dimensionName, questionKeys]) => {
-    let keys = Array.isArray(questionKeys) ? [...questionKeys] : [];
-    if (sQ !== 'todas') keys = keys.includes(sQ) ? [sQ] : [];
-    if (!keys.length) return null;
-    const labels = [], dataPoints = [];
-    for (const key of keys) {
-      const scores = (filteredData || []).map((item) => ratingToScore[item[key]]).filter((v) => v != null);
-      if (scores.length) { labels.push(key); dataPoints.push(Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))); }
-    }
-    return labels.length ? { dimensionName, chartData: { labels, datasets: [{ label: 'Média de Respostas', data: dataPoints, backgroundColor: isB ? 'rgba(54, 162, 235, 0.8)' : 'rgba(255, 142, 41, 0.8)', borderColor: isB ? 'rgba(54, 162, 235, 1)' : 'rgba(255, 142, 41, 1)', borderWidth: 1 }] } } : null;
-  }).filter(Boolean);
+  
+  return Object.entries(dimensionMappingDocente)
+    .filter(([name]) => sDim === 'todas' || name === sDim)
+    .map(([dimensionName, questionCodes]) => {
+      const labels = [], dataPoints = [];
+      for (const code of questionCodes) {
+        if (sQ !== 'todas' && code !== sQ) continue;
+
+        // Traduz 'P.x.35' para 'Pergunta_35'
+        const match = code.match(/\.(\d+)$/);
+        const dataKey = match ? `Pergunta_${match[1]}` : code;
+
+        const scores = filteredData.map(i => {
+          const val = i[dataKey];
+          const numeric = parseFloat(val);
+          return !isNaN(numeric) ? numeric : (ratingToScore ? ratingToScore[val] : null);
+        }).filter(v => v !== null && v !== undefined);
+
+        if (scores.length) { 
+          labels.push(code); 
+          dataPoints.push(Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))); 
+        }
+      }
+      return labels.length ? { dimensionName, chartData: { labels, datasets: [{ label: 'Média de Respostas', data: dataPoints, backgroundColor: isB ? 'rgba(54, 162, 235, 0.8)' : 'rgba(255, 142, 41, 0.8)', borderColor: isB ? 'rgba(54, 162, 235, 1)' : 'rgba(255, 142, 41, 1)', borderWidth: 1 }] } } : null;
+    }).filter(Boolean);
 }
