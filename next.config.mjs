@@ -6,21 +6,25 @@ const API_BASE =
 
 const nextConfig = {
   reactStrictMode: true,
-
-  // 1. SOLUÇÃO PARA O ERRO NA VERCEL (WorkerError / Call retries exceeded)
-  // Desativa múltiplas threads de build e limita a CPU para economizar memória RAM.
+  
+  // 1. SOLUÇÃO PARA O ERRO NA VERCEL (WorkerError)
+  // Desativa o uso de múltiplas threads e limita a 1 CPU para não estourar a RAM
   experimental: {
     workerThreads: false,
     cpus: 1
   },
 
-  // 2. ECONOMIA DE MEMÓRIA DURANTE O BUILD
-  // Ignora checagens pesadas que podem ser feitas localmente para garantir o deploy.
+  // 2. AUMENTO DE TIMEOUT
+  // Dá mais tempo para o Next.js processar a lógica dos CSVs e dimensões
+  staticGenerationTimeout: 180,
+
+  // 3. ECONOMIA DE RECURSOS NO BUILD
+  // Pula checagens pesadas na Vercel para garantir que o deploy termine
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
 
-  // 3. ATIVAÇÃO DA COMPRESSÃO
-  // Reduz drasticamente o tamanho dos arquivos CSV/JSON enviados para o navegador.
+  // 4. COMPRESSÃO DE DADOS
+  // Reduz os arquivos CSV/JSON de MBs para KBs na rede
   compress: true,
 
   async rewrites() {
@@ -35,15 +39,15 @@ const nextConfig = {
   async headers() {
     return [
       {
-        // 4. AJUSTE DE CACHE PARA O BACKEND
+        // AJUSTE DE CACHE PARA O BACKEND (Hugging Face)
         source: '/backend/:path*',
         headers: [
           { key: 'Cache-Control', value: 'no-store, max-age=0' },
         ],
       },
       {
-        // 5. OTIMIZAÇÃO PARA ARQUIVOS LOCAIS (CSV)
-        // Permite validação por ETag para não baixar o arquivo se ele não mudou.
+        // OTIMIZAÇÃO PARA OS ARQUIVOS CSV LOCAIS
+        // Permite o uso de cache inteligente pelo navegador
         source: '/api/:path*',
         headers: [
           { key: 'Cache-Control', value: 'public, s-maxage=10, stale-while-revalidate=59' },
