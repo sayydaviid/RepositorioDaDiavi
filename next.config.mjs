@@ -7,24 +7,24 @@ const API_BASE =
 const nextConfig = {
   reactStrictMode: true,
   
-  // 1. SOLUÇÃO PARA O ERRO NA VERCEL (WorkerError)
-  // Desativa o uso de múltiplas threads e limita a 1 CPU para não estourar a RAM
+  // SOLUÇÃO PARA O ERRO DO TURBOPACK
+  // Define uma config vazia para silenciar o erro de detecção automática
+  turbopack: {},
+
+  // SOLUÇÃO PARA O WORKERERROR (Call retries exceeded)
+  // Limita o paralelismo para não esgotar a memória RAM da Vercel
   experimental: {
     workerThreads: false,
     cpus: 1
   },
 
-  // 2. AUMENTO DE TIMEOUT
-  // Dá mais tempo para o Next.js processar a lógica dos CSVs e dimensões
+  // Aumenta o tempo de tolerância para processar os arquivos CSV
   staticGenerationTimeout: 180,
 
-  // 3. ECONOMIA DE RECURSOS NO BUILD
-  // Pula checagens pesadas na Vercel para garantir que o deploy termine
+  // Pula checagens pesadas para economizar memória durante o build
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
 
-  // 4. COMPRESSÃO DE DADOS
-  // Reduz os arquivos CSV/JSON de MBs para KBs na rede
   compress: true,
 
   async rewrites() {
@@ -39,19 +39,12 @@ const nextConfig = {
   async headers() {
     return [
       {
-        // AJUSTE DE CACHE PARA O BACKEND (Hugging Face)
         source: '/backend/:path*',
-        headers: [
-          { key: 'Cache-Control', value: 'no-store, max-age=0' },
-        ],
+        headers: [{ key: 'Cache-Control', value: 'no-store, max-age=0' }],
       },
       {
-        // OTIMIZAÇÃO PARA OS ARQUIVOS CSV LOCAIS
-        // Permite o uso de cache inteligente pelo navegador
         source: '/api/:path*',
-        headers: [
-          { key: 'Cache-Control', value: 'public, s-maxage=10, stale-while-revalidate=59' },
-        ],
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=10, stale-while-revalidate=59' }],
       },
     ];
   },
