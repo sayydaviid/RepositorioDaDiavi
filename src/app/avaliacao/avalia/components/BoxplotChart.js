@@ -1,7 +1,7 @@
 // src/app/avalia/components/BoxplotChart.js
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
@@ -10,14 +10,12 @@ const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
  * =========================
  * PERF GUARD RAILS (ajuste conforme necessidade)
  * =========================
- * Se seu endpoint pode retornar MUITO outlier, esses limites são obrigatórios
- * para não travar a UI (SVG + main thread).
  */
-const MAX_OUTLIERS_SCANNED = 25000; // no máximo quantos pontos vamos "varrer" do payload
-const MAX_OUTLIERS_DRAWN = 1500;   // no máximo quantos outliers serão desenhados
-const BIN_COUNT = 6;               // número de bins (poucas séries scatter -> mais leve)
-const MAX_LABEL_CATS = 80;         // acima disso desliga labels por annotations (muito SVG)
-const MAX_TICK_AMOUNT = 40;        // evita tickAmount = 300 (mesmo com labels hidden)
+const MAX_OUTLIERS_SCANNED = 25000;
+const MAX_OUTLIERS_DRAWN = 1500;
+const BIN_COUNT = 6;
+const MAX_LABEL_CATS = 80;
+const MAX_TICK_AMOUNT = 40;
 
 /**
  * ApexCharts boxPlot:
@@ -38,7 +36,7 @@ function sanitizeBox5(y) {
   if (med < q1) med = q1;
   if (med > q3) med = q3;
 
-  // evita “caixa-traço”
+  // evita "caixa-traço"
   const MIN_BOX_HEIGHT = 0.12;
   const iqr0 = q3 - q1;
   if (iqr0 < MIN_BOX_HEIGHT) {
@@ -63,7 +61,7 @@ function sanitizeBox5(y) {
   ];
 }
 
-/** Quebra label em múltiplas linhas (respeita \n se já vier pronto) */
+/** Quebra label em múltiplas linhas */
 function splitLines(label, maxLen = 14) {
   if (!label) return [''];
   const txt = String(label).trim();
@@ -105,10 +103,19 @@ function lerpColorHex(a, b, t) {
   return `#${h(r)}${h(g)}${h(bb)}`;
 }
 
-export default React.memo(function BoxplotChart({ apiData, title }) {
+export default React.memo(function BoxplotChart({ apiData, title, customOptions }) {
+  const wrapperRef = useRef(null);
+
   if (!apiData || !apiData.boxplot_data) {
     return (
-      <div style={{ height: 350, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div
+        style={{
+          height: 350,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
         Carregando...
       </div>
     );
@@ -117,14 +124,27 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
   const chartTitle = title || 'Distribuição das Médias das Avaliações';
 
   /**
-   * 1) Box data sanitizado (memo)
+   * 1) Box data sanitizado com a retenção do MIN e MAX reais originais (memo)
    */
   const adjustedBoxData = useMemo(() => {
     const src = apiData.boxplot_data || [];
-    return src.map((d) => ({
-      x: d.x,
-      y: sanitizeBox5(d.y),
-    }));
+    return src.map((d) => {
+      let origMin = null;
+      let origMax = null;
+      
+      // Captura os extremos verdadeiros caso eles fujam das fences do boxplot
+      if (Array.isArray(d.y) && d.y.length >= 5) {
+        origMin = Number(d.y[0]);
+        origMax = Number(d.y[4]);
+      }
+
+      return {
+        x: d.x,
+        y: sanitizeBox5(d.y),
+        origMin,
+        origMax
+      };
+    });
   }, [apiData.boxplot_data]);
 
   /**
@@ -146,22 +166,35 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
   }, [adjustedBoxData]);
 
   /**
-   * 3) Outliers em bins (com caps + stride) para não travar
-   * - sem Math.max(...arrayGrande)
-   * - limita varredura do payload e quantidade desenhada
+   * 3) Outliers em bins e injeção de pontos extremos (min/max originais)
    */
   const { outlierSeries, outlierSeriesColors } = useMemo(() => {
-    const raw = apiData.outliers_data || [];
+    // Pegamos os outliers da API
+    const raw = Array.isArray(apiData.outliers_data) ? [...apiData.outliers_data] : [];
+
+    // SEÇÃO CRÍTICA: Se o Min ou Max real da estatística descritiva ficou de fora dos
+    // "fences" calculados, inserimos eles à força como bolinhas de outliers!
+    for (const d of adjustedBoxData) {
+      if (!d.y || d.y.length < 5) continue;
+      const whiskerMin = d.y[0];
+      const whiskerMax = d.y[4];
+      
+      if (d.origMin !== null && Number.isFinite(d.origMin) && d.origMin < whiskerMin - 1e-5) {
+        raw.push({ x: d.x, y: d.origMin });
+      }
+      if (d.origMax !== null && Number.isFinite(d.origMax) && d.origMax > whiskerMax + 1e-5) {
+        raw.push({ x: d.x, y: d.origMax });
+      }
+    }
+
     if (!raw.length || !categories.length) {
       return { outlierSeries: [], outlierSeriesColors: [] };
     }
 
-    // stride para limitar varredura
     const stepRaw = Math.max(1, Math.ceil(raw.length / MAX_OUTLIERS_SCANNED));
-
-    // 1ª fase: filtra outliers válidos e calcula maxDist (sem arrays gigantes)
     const kept = [];
     let maxDist = 1e-9;
+    const seen = new Set(); // Para evitar sobreposição duplicada no visual
 
     for (let i = 0; i < raw.length; i += stepRaw) {
       const p = raw[i];
@@ -170,12 +203,16 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
       if (!f || !Number.isFinite(yv)) continue;
 
       let dist = 0;
-      if (yv < f.low) dist = f.low - yv;
-      else if (yv > f.high) dist = yv - f.high;
+      if (yv < f.low - 1e-5) dist = f.low - yv;
+      else if (yv > f.high + 1e-5) dist = yv - f.high;
       else continue;
 
       const xi = categoryMap.get(p.x);
       if (!xi) continue;
+
+      const key = `${xi}_${yv}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
 
       kept.push({ x: xi, y: yv, dist });
       if (dist > maxDist) maxDist = dist;
@@ -183,7 +220,6 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
 
     if (!kept.length) return { outlierSeries: [], outlierSeriesColors: [] };
 
-    // cap final do que vai ser desenhado (amostragem)
     let points = kept;
     if (points.length > MAX_OUTLIERS_DRAWN) {
       const step = Math.max(1, Math.ceil(points.length / MAX_OUTLIERS_DRAWN));
@@ -192,22 +228,19 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
       points = sampled;
     }
 
-    // prepara cores por bin
     const DARK = '#1F2937';
     const LIGHT = '#CBD5E1';
     const binColors = Array.from({ length: BIN_COUNT }, (_, i) =>
       lerpColorHex(DARK, LIGHT, i / (BIN_COUNT - 1))
     );
 
-    // bins -> poucas séries = leve
     const bins = Array.from({ length: BIN_COUNT }, () => []);
     for (const p of points) {
-      const t = p.dist / maxDist; // 0..1
+      const t = p.dist / maxDist;
       const bi = Math.min(BIN_COUNT - 1, Math.max(0, Math.floor(t * (BIN_COUNT - 1))));
       bins[bi].push({ x: p.x, y: p.y });
     }
 
-    // monta séries somente dos bins usados + lista de cores alinhada com as séries
     const series = [];
     const colorsUsed = [];
     for (let i = 0; i < BIN_COUNT; i++) {
@@ -217,91 +250,128 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
     }
 
     return { outlierSeries: series, outlierSeriesColors: colorsUsed };
-  }, [apiData.outliers_data, categories.length, categoryMap, fencesByCat]);
+  }, [apiData.outliers_data, adjustedBoxData, categories.length, categoryMap, fencesByCat]);
 
   /**
-   * 4) Labels via annotations (com cap por N de categorias)
-   * Se tiver categoria demais, desliga (senão vira muita coisa no SVG)
+   * 4) Labels via annotations
    */
-  const { labelAnnotations, maxLines, baseOffsetY, lineH, labelsEnabled } = useMemo(() => {
-    if (!categories.length || categories.length > MAX_LABEL_CATS) {
-      return {
-        labelAnnotations: [],
-        maxLines: 0,
-        baseOffsetY: 0,
-        lineH: 0,
-        labelsEnabled: false,
-      };
-    }
-
-    const splitAll = categories.map((c) => splitLines(c, 14));
-    const mLines = splitAll.length ? Math.max(...splitAll.map((ls) => ls.length)) : 1;
-
-    const _lineH = 13;
-    const _baseOffsetY = 18;
-
-    const anns = [];
-    for (let i = 0; i < categories.length; i++) {
-      const lines = splitAll[i];
-      for (let li = 0; li < lines.length; li++) {
-        anns.push({
-          x: i + 1,
-          x2: i + 1,
-          y: 1,
-          y2: 1,
-          borderColor: 'transparent',
-          label: {
-            borderColor: 'transparent',
-            position: 'bottom',
-            orientation: 'horizontal',
-            offsetY: _baseOffsetY + li * _lineH,
-            text: lines[li],
-            style: {
-              background: 'transparent',
-              color: '#64748B',
-              fontSize: '10px',
-              fontFamily: 'Inter, system-ui, sans-serif',
-              fontWeight: 400,
-              textAlign: 'center',
-            },
-          },
-        });
+  const { labelAnnotations, maxLines, baseOffsetY, lineH, labelsEnabled } =
+    useMemo(() => {
+      if (!categories.length || categories.length > MAX_LABEL_CATS) {
+        return {
+          labelAnnotations: [],
+          maxLines: 0,
+          baseOffsetY: 0,
+          lineH: 0,
+          labelsEnabled: false,
+        };
       }
-    }
 
-    return { labelAnnotations: anns, maxLines: mLines, baseOffsetY: _baseOffsetY, lineH: _lineH, labelsEnabled: true };
-  }, [categories]);
+      const splitAll = categories.map((c) => splitLines(c, 14));
+      const mLines = splitAll.length
+        ? Math.max(...splitAll.map((ls) => ls.length))
+        : 1;
+
+      const _lineH = 13;
+      const _baseOffsetY = 18;
+
+      const anns = [];
+      for (let i = 0; i < categories.length; i++) {
+        const lines = splitAll[i];
+        for (let li = 0; li < lines.length; li++) {
+          anns.push({
+            x: i + 1,
+            x2: i + 1,
+            y: 1,
+            y2: 1,
+            borderColor: 'transparent',
+            label: {
+              borderColor: 'transparent',
+              position: 'bottom',
+              orientation: 'horizontal',
+              offsetY: _baseOffsetY + li * _lineH,
+              text: lines[li],
+              style: {
+                background: 'transparent',
+                color: '#64748B',
+                fontSize: '10px',
+                fontFamily: 'Inter, system-ui, sans-serif',
+                fontWeight: 400,
+                textAlign: 'center',
+              },
+            },
+          });
+        }
+      }
+
+      return {
+        labelAnnotations: anns,
+        maxLines: mLines,
+        baseOffsetY: _baseOffsetY,
+        lineH: _lineH,
+        labelsEnabled: true,
+      };
+    }, [categories]);
 
   /**
-   * 5) Series estável (memo)
+   * 5) Series estável passando MIN/MAX reais para uso no Tooltip (memo)
    */
   const series = useMemo(() => {
     const boxSeries = {
       name: 'Distribuição',
       type: 'boxPlot',
-      data: adjustedBoxData.map((d) => ({ x: categoryMap.get(d.x), y: d.y })),
+      data: adjustedBoxData.map((d) => ({ 
+        x: categoryMap.get(d.x), 
+        y: d.y,
+        origMin: d.origMin, // Guardando para o Tooltip!
+        origMax: d.origMax
+      })),
     };
     return [boxSeries, ...outlierSeries];
   }, [adjustedBoxData, categoryMap, outlierSeries]);
+
+  const noZoom = useMemo(
+    () => ({
+      chart: {
+        zoom: { enabled: false },
+        selection: { enabled: false },
+        pan: { enabled: false },
+        toolbar: {
+          show: false,
+          tools: {
+            zoom: false,
+            zoomin: false,
+            zoomout: false,
+            pan: false,
+            reset: false,
+            selection: false,
+          },
+        },
+      },
+    }),
+    []
+  );
 
   /**
    * 6) Options estável (memo)
    */
   const options = useMemo(() => {
-    // colors: 1º = box; o resto = bins realmente usados (alinhado com series)
     const colors = ['#053B50', ...outlierSeriesColors];
 
-    // stroke arrays alinhados ao número de séries
     const strokeWidths = [1.1, ...Array(Math.max(0, series.length - 1)).fill(0)];
-    const strokeColors = ['#053B50', ...Array(Math.max(0, series.length - 1)).fill('transparent')];
+    const strokeColors = [
+      '#053B50',
+      ...Array(Math.max(0, series.length - 1)).fill('transparent'),
+    ];
 
-    const extraBottom = labelsEnabled ? (20 + baseOffsetY + maxLines * lineH) : 20;
+    const extraBottom = labelsEnabled ? 20 + baseOffsetY + maxLines * lineH : 20;
 
-    // tickAmount alto com muita categoria é custo inútil (labels estão hidden)
     const tickAmount =
-      categories.length <= MAX_TICK_AMOUNT ? categories.length : Math.min(MAX_TICK_AMOUNT, 10);
+      categories.length <= MAX_TICK_AMOUNT
+        ? categories.length
+        : Math.min(MAX_TICK_AMOUNT, 10);
 
-    return {
+    const base = {
       colors,
       annotations: labelsEnabled ? { xaxis: labelAnnotations } : undefined,
 
@@ -312,7 +382,7 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
         background: 'transparent',
         fontFamily: 'Inter, system-ui, sans-serif',
         animations: {
-          enabled: false, // elimina loops internos e “updated storms”
+          enabled: false,
         },
       },
 
@@ -380,32 +450,94 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
         intersect: true,
         custom: ({ seriesIndex, dataPointIndex, w }) => {
           if (seriesIndex === 0) {
-            const stats = w.config.series[0].data[dataPointIndex].y;
+            // TOOLTIP: Garante que os números mostrados sejam idênticos aos da Tabela Descritiva.
+            const dataItem = w.config.series[0].data[dataPointIndex];
+            const stats = dataItem.y;
+            const oMin = dataItem.origMin !== null && dataItem.origMin !== undefined ? Number(dataItem.origMin).toFixed(2) : stats[0];
+            const oMax = dataItem.origMax !== null && dataItem.origMax !== undefined ? Number(dataItem.origMax).toFixed(2) : stats[4];
+            
             const item = categories[dataPointIndex] ?? '';
             return `
               <div style="padding: 12px; border-radius: 8px; background: #FFF; border: 1px solid #E2E8F0;">
                 <div style="font-weight: 700; color: #1E293B">Item: ${item}</div>
                 <div style="font-size: 12px; color: #64748B;">
-                  <div>MAX.: <b>${stats[4]}</b></div>
+                  <div>MAX.: <b>${oMax}</b></div>
                   <div>Q3: <b>${stats[3]}</b></div>
                   <div>Mediana: <b>${stats[2]}</b></div>
                   <div>Q1: <b>${stats[1]}</b></div>
-                  <div>MIN.: <b>${stats[0]}</b></div>
+                  <div>MIN.: <b>${oMin}</b></div>
                 </div>
               </div>`;
           }
 
-          // Outliers (qualquer uma das séries bins)
           const p = w.config.series[seriesIndex]?.data?.[dataPointIndex];
           if (!p) return '';
           return `
             <div style="padding: 10px; border-radius: 8px; background: #FFF; border: 1px solid #E2E8F0;">
               <div style="font-weight: 700; color: #1E293B">Outlier</div>
-              <div style="font-size: 12px; color: #64748B;">Valor: <b>${Number(p.y).toFixed(2)}</b></div>
+              <div style="font-size: 12px; color: #64748B;">Valor: <b>${Number(p.y).toFixed(
+                2
+              )}</b></div>
             </div>`;
         },
       },
     };
+
+    const merged = {
+      ...base,
+      ...(customOptions || {}),
+      chart: {
+        ...(base.chart || {}),
+        ...(customOptions?.chart || {}),
+        ...(noZoom.chart || {}),
+      },
+      plotOptions: {
+        ...(base.plotOptions || {}),
+        ...(customOptions?.plotOptions || {}),
+      },
+      xaxis: {
+        ...(base.xaxis || {}),
+        ...(customOptions?.xaxis || {}),
+      },
+      yaxis: {
+        ...(base.yaxis || {}),
+        ...(customOptions?.yaxis || {}),
+      },
+      grid: {
+        ...(base.grid || {}),
+        ...(customOptions?.grid || {}),
+      },
+      tooltip: {
+        ...(base.tooltip || {}),
+        ...(customOptions?.tooltip || {}),
+      },
+      stroke: {
+        ...(base.stroke || {}),
+        ...(customOptions?.stroke || {}),
+      },
+      markers: {
+        ...(base.markers || {}),
+        ...(customOptions?.markers || {}),
+      },
+      dataLabels: {
+        ...(base.dataLabels || {}),
+        ...(customOptions?.dataLabels || {}),
+      },
+      title: {
+        ...(base.title || {}),
+        ...(customOptions?.title || {}),
+      },
+      legend: {
+        ...(base.legend || {}),
+        ...(customOptions?.legend || {}),
+      },
+      annotations:
+        (customOptions && 'annotations' in customOptions)
+          ? customOptions.annotations
+          : base.annotations,
+    };
+
+    return merged;
   }, [
     chartTitle,
     categories,
@@ -414,12 +546,24 @@ export default React.memo(function BoxplotChart({ apiData, title }) {
     maxLines,
     baseOffsetY,
     lineH,
-    series.length,
+    series,
     outlierSeriesColors,
+    customOptions,
+    noZoom,
   ]);
 
   return (
-    <div style={{ width: '100%', height: '350px' }}>
+    <div
+      ref={wrapperRef}
+      style={{
+        width: '100%',
+        height: '350px',
+        touchAction: 'none',
+      }}
+      onWheelCapture={(e) => {
+        e.preventDefault();
+      }}
+    >
       <Chart options={options} series={series} type="boxPlot" height={350} />
     </div>
   );

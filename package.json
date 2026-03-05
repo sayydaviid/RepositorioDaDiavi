@@ -2,11 +2,11 @@
   "name": "avaliaa",
   "version": "0.1.0",
   "private": true,
-"scripts": {
-  "dev": "concurrently -n \"NEXTJS,BROWSER\" -c \"blue,cyan\" \"next dev --webpack\" \"wait-on -v http-get://127.0.0.1:3000 && open-cli http://localhost:3000/avaliacao/avalia\"",
-  "build": "NODE_OPTIONS='--max-old-space-size=4096' next build",
-  "start": "next start",
-  "lint": "eslint" 
+  "scripts": {
+    "dev": "concurrently -n \"NEXTJS,BROWSER\" -c \"blue,cyan\" \"next dev --webpack\" \"wait-on -v http-get://127.0.0.1:3000 && open-cli http://localhost:3000/avaliacao/avalia\"",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' next build",
+    "start": "next start",
+    "lint": "eslint"
   },
   "dependencies": {
     "@sgratzl/chartjs-chart-boxplot": "^4.4.4",
@@ -16,7 +16,7 @@
     "apexcharts": "^5.3.5",
     "chart.js": "^4.5.0",
     "chartjs-plugin-datalabels": "^2.2.0",
-    "jspdf": "^4.1.0",
+    "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.542.0",
     "next": "^16.1.6",
@@ -29,10 +29,10 @@
     "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
+    "@eslint/eslintrc": "^0.1.0",
     "concurrently": "^9.2.1",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.2",
+    "eslint": "^10.0.0",
+    "eslint-config-next": "^0.2.4",
     "open-cli": "^8.0.0",
     "wait-on": "^8.0.5"
   }

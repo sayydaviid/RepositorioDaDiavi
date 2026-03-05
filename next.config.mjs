@@ -1,28 +1,32 @@
 /** @type {import('next').NextConfig} */
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, '') ||
-  'https://sayydaviid-avalia-backend.hf.space';
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_BASE ||
+  'https://sayydaviid-avalia-backend.hf.space'
+).replace(/\/$/, '');
 
 const nextConfig = {
   reactStrictMode: true,
-  
-  // SOLUÇÃO PARA O ERRO DO TURBOPACK
-  // Define uma config vazia para silenciar o erro de detecção automática
+
   turbopack: {},
 
-  // SOLUÇÃO PARA O WORKERERROR (Call retries exceeded)
-  // Limita o paralelismo para não esgotar a memória RAM da Vercel
-  experimental: {
-    workerThreads: false,
-    cpus: 1
+  // ✅ FIX para ECONNRESET (HF Spaces / rewrites instável)
+  httpAgentOptions: {
+    keepAlive: false,
   },
 
-  // Aumenta o tempo de tolerância para processar os arquivos CSV
-  staticGenerationTimeout: 180,
+  experimental: {
+    workerThreads: false,
+    cpus: 1,
 
-  // Pula checagens pesadas para economizar memória durante o build
-  eslint: { ignoreDuringBuilds: true },
+    // ✅ substitui a ideia do "timeout" por controles suportados no Next 16
+    // (ajuste fino se quiser)
+    staticGenerationRetryCount: 1,
+    staticGenerationMaxConcurrency: 4,
+    staticGenerationMinPagesPerWorker: 25,
+  },
+
+  // (mantém)
   typescript: { ignoreBuildErrors: true },
 
   compress: true,
@@ -44,10 +48,17 @@ const nextConfig = {
       },
       {
         source: '/api/:path*',
-        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=10, stale-while-revalidate=59' }],
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, s-maxage=10, stale-while-revalidate=59',
+          },
+        ],
       },
     ];
   },
+
+  serverExternalPackages: [],
 
   webpack: (config) => {
     config.resolve.fallback = {

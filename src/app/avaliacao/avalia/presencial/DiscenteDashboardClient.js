@@ -3,58 +3,77 @@
 import { useState, useEffect, useMemo } from 'react';
 import DiscenteFilters from '../components/DiscenteFilterAvalia';
 import StatCard from '../components/StatCard';
-import ActivityChart from '../components/ActivityChart';
-import BoxplotChart from '../components/BoxplotChart';
+import LoadingOverlay from '../components/LoadingOverlay';
 import styles from '../../../../styles/dados.module.css';
 import { Users, TrendingUp, TrendingDown } from 'lucide-react';
+
+// ✅ Abas modularizadas
+import DimensoesGeraisTab from './dimensoes_gerais/DimensoesGeraisTab';
+import AutoavaliacaoTab from './autoavaliacao_discente/AutoavaliacaoTab';
+import AtividadesAcademicasTab from './atividades_academicas/AtividadesAcademicasTab';
+import BaseDocenteTab from './base_docente/BaseDocenteTab';
+import InstalacoesFisicasTab from './instalacoes_fisicas/InstalacoesFisicasTab';
 
 const API_BASE =
   (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE) || '';
 
 const make = (path) => (API_BASE ? `${API_BASE}${path}` : `/backend${path}`);
 
-const LoadingOverlay = ({ isFullScreen = false }) => (
-  <>
-    <style jsx global>{`
-      @keyframes spin {
-        from {
-          transform: rotate(0deg);
-        }
-        to {
-          transform: rotate(360deg);
-        }
-      }
-    `}</style>
-    <div
-      style={{
-        position: isFullScreen ? 'fixed' : 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        backgroundColor: 'rgba(255,255,255,0.7)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        flexDirection: 'column',
-        zIndex: 9990,
-        backdropFilter: 'blur(5px)',
-        borderRadius: isFullScreen ? 0 : '8px',
-      }}
-    >
-      <div
-        style={{
-          width: 50,
-          height: 50,
-          border: '6px solid #e0e0e0',
-          borderTop: '6px solid #288FB4',
-          borderRadius: '50%',
-          animation: 'spin 1.2s linear infinite',
-        }}
-      />
-    </div>
-  </>
-);
+// ======================================================
+// LIMITADOR GLOBAL DE CONCORRÊNCIA (2–3 simultâneos)
+// ======================================================
+const MAX_CONCURRENT_REQUESTS = 3;
+
+function abortError() {
+  const e = new Error('Aborted');
+  e.name = 'AbortError';
+  return e;
+}
+
+function createPromisePool(concurrency = 3) {
+  let active = 0;
+  const queue = [];
+
+  const next = () => {
+    if (active >= concurrency) return;
+    const item = queue.shift();
+    if (!item) return;
+
+    active++;
+    const { task, resolve, reject } = item;
+
+    Promise.resolve()
+      .then(task)
+      .then(resolve, reject)
+      .finally(() => {
+        active--;
+        next();
+      });
+  };
+
+  return function pool(task) {
+    return new Promise((resolve, reject) => {
+      queue.push({ task, resolve, reject });
+      next();
+    });
+  };
+}
+
+const requestPool = createPromisePool(MAX_CONCURRENT_REQUESTS);
+
+function pooled(task, signal) {
+  return requestPool(async () => {
+    if (signal?.aborted) throw abortError();
+    return task();
+  });
+}
+
+const disableZoomOptions = {
+  chart: {
+    zoom: { enabled: false },
+    toolbar: { show: false },
+  },
+};
 
 const twoDecTooltip = (suffix = '') => ({
   callbacks: {
@@ -271,8 +290,13 @@ function normalizeAtitudeDocenteChartData(chartData) {
 
 const v0 = (x) => (Array.isArray(x) ? x?.[0] : x);
 
+// ✅ atualizado: inclui acao_docente_discente
 const emptyDetailData = () => ({
   autoavaliacao: { propItens: null, medItens: null, boxItens: null },
+
+  // ✅ Ação Docente (subdimensões) - base discente (Figura 8/6/10)
+  acao_docente_discente: { propSub: null, medSub: null, boxSub: null },
+
   autoavaliacao_docente: { propSub: null, medSub: null, boxSub: null },
   atitude: {
     discProp: null,
@@ -282,11 +306,37 @@ const emptyDetailData = () => ({
     docMed: null,
     docBox: null,
   },
-  gestao: { discMed: null, discProp: null, docMed: null, docProp: null, discBox: null },
-  processo: { discMed: null, discProp: null, discBox: null, docMed: null, docProp: null },
-  instalacoes: { medItens: null, propItens: null, boxDisc: null, medDoc: null, propDoc: null },
+  gestao: {
+    discMed: null,
+    discProp: null,
+    discBox: null,
+    docMed: null,
+    docProp: null,
+    docBox: null,
+  },
+  processo: {
+    discMed: null,
+    discProp: null,
+    discBox: null,
+    docMed: null,
+    docProp: null,
+  },
+  instalacoes: {
+    medItens: null,
+    propItens: null,
+    boxDisc: null,
+    medDoc: null,
+    propDoc: null,
+  },
   atividades: { doc: null },
-  base_docente: { turmaMed: null, turmaProp: null, subMed: null, subProp: null, dimMed: null, dimProp: null },
+  base_docente: {
+    turmaMed: null,
+    turmaProp: null,
+    subMed: null,
+    subProp: null,
+    dimMed: null,
+    dimProp: null,
+  },
 });
 
 async function fetchJson(url, signal, errMsg) {
@@ -294,6 +344,298 @@ async function fetchJson(url, signal, errMsg) {
   if (!r.ok) throw new Error(errMsg || 'Falha ao buscar dados da API R');
   return r.json();
 }
+
+async function fetchJsonOptional(url, signal) {
+  try {
+    return await fetchJson(url, signal);
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    return null;
+  }
+}
+
+function coerceRows(apiData) {
+  if (Array.isArray(apiData)) return apiData;
+  if (!apiData || typeof apiData !== 'object') return [];
+  const candidates = [
+    'data',
+    'tabela',
+    'tabela2',
+    'tabela_items',
+    'rows',
+    'result',
+    'descritivas',
+  ];
+  for (const k of candidates) {
+    if (Array.isArray(apiData?.[k])) return apiData[k];
+  }
+  return [];
+}
+
+function renderDescritivasTable(apiData) {
+  const rows = coerceRows(apiData);
+  if (!rows.length)
+    return (
+      <p style={{ textAlign: 'center' }}>
+        Estatísticas descritivas não disponíveis.
+      </p>
+    );
+
+  // -----------------------------
+  // Helpers
+  // -----------------------------
+  const hasOwn = (obj, k) => Object.prototype.hasOwnProperty.call(obj, k);
+
+  const pick = (obj, candidates) => {
+    for (const c of candidates) if (hasOwn(obj, c)) return obj[c];
+    return undefined;
+  };
+
+  const fmt = (v) => {
+    if (v === null || v === undefined) return '';
+    const num = Number(v);
+    if (Number.isFinite(num) && typeof v !== 'boolean') return num.toFixed(2);
+    return String(v);
+  };
+
+  // -----------------------------
+  // ✅ Caso especial: tabela_items (por item) -> TRANSPOSTA
+  // Esperado: rows = [{ item, Min, Q1, Mediana, Media, Q3, Max }, ...]
+  // Saída: Estatística | 1.1.1 | 1.1.2 | ...
+  // -----------------------------
+  const firstKeys = Object.keys(rows[0] || {});
+  const hasItemCol = firstKeys.some((k) => k.toLowerCase() === 'item');
+  const hasMinLike = firstKeys.some((k) => k.toLowerCase() === 'min');
+
+  if (hasItemCol && hasMinLike) {
+    const itemKey =
+      firstKeys.find((k) => k.toLowerCase() === 'item') || 'item';
+
+    // Mapa item -> linha original
+    const byItem = new Map();
+    for (const r of rows) {
+      const it = pick(r, [itemKey, 'Item', 'ITEM']);
+      if (it !== undefined && it !== null && String(it).trim() !== '') {
+        byItem.set(String(it).trim(), r);
+      }
+    }
+
+    const items = Array.from(byItem.keys());
+
+    // Ordenação “numérica” por código (1.1.10 > 1.1.2 etc)
+    const parseCode = (s) =>
+      String(s)
+        .split('.')
+        .map((x) => parseInt(x, 10))
+        .filter((n) => Number.isFinite(n));
+
+    items.sort((a, b) => {
+      const A = parseCode(a);
+      const B = parseCode(b);
+      const len = Math.max(A.length, B.length);
+      for (let i = 0; i < len; i++) {
+        const av = A[i] ?? -1;
+        const bv = B[i] ?? -1;
+        if (av !== bv) return av - bv;
+      }
+      return String(a).localeCompare(String(b));
+    });
+
+    // Ordem/labels das estatísticas (linhas)
+    const stats = [
+      { label: 'Min', keys: ['Min', 'min', 'MIN'] },
+      { label: '1º Q.', keys: ['Q1', 'q1', '1st Qu.', '1st Qu', '1st_qu', '1st_qu.'] },
+      { label: 'Mediana', keys: ['Mediana', 'mediana', 'Median', 'median'] },
+      { label: 'Média', keys: ['Media', 'media', 'Mean', 'mean'] },
+      { label: '3º Q.', keys: ['Q3', 'q3', '3rd Qu.', '3rd Qu', '3rd_qu', '3rd_qu.'] },
+      { label: 'Max', keys: ['Max', 'max', 'MAX'] },
+    ];
+
+    return (
+      <div style={{ width: '100%', padding: '0 10px', overflowX: 'auto' }}>
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: 13,
+            backgroundColor: '#fff',
+          }}
+        >
+          <thead>
+            <tr>
+              <th
+                style={{
+                  textAlign: 'left',
+                  padding: '10px 8px',
+                  borderBottom: '2px solid rgba(0,0,0,0.12)',
+                  whiteSpace: 'nowrap',
+                  fontWeight: 600,
+                }}
+              >
+                Estatística
+              </th>
+              {items.map((it) => (
+                <th
+                  key={it}
+                  style={{
+                    textAlign: 'left',
+                    padding: '10px 8px',
+                    borderBottom: '2px solid rgba(0,0,0,0.12)',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 600,
+                  }}
+                >
+                  {it}
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {stats.map((st) => (
+              <tr key={st.label}>
+                <td
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid rgba(0,0,0,0.06)',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 600,
+                  }}
+                >
+                  {st.label}
+                </td>
+
+                {items.map((it) => {
+                  const r = byItem.get(it);
+                  const v = r ? pick(r, st.keys) : '';
+                  return (
+                    <td
+                      key={`${st.label}-${it}`}
+                      style={{
+                        padding: '8px',
+                        borderBottom: '1px solid rgba(0,0,0,0.06)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {fmt(v)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  // -----------------------------
+  // Default: tabela “normal” (como já era)
+  // -----------------------------
+  const keys = Object.keys(rows[0] || {});
+  const preferredOrder = [
+    'Estatística',
+    'Estatistica',
+    'estatistica',
+    'Estatistica.',
+    'dimensao',
+    'DIMENSAO',
+    'item',
+    'ITEM',
+    'n',
+    'N',
+    'media',
+    'MEDIA',
+    'media_geral',
+    'desvio_padrao',
+    'DP',
+    'sd',
+    'min',
+    'MIN',
+    'q1',
+    'Q1',
+    'mediana',
+    'MEDIANA',
+    'q3',
+    'Q3',
+    'max',
+    'MAX',
+  ];
+
+  const ordered = [];
+  for (const k of preferredOrder) if (keys.includes(k)) ordered.push(k);
+  for (const k of keys) if (!ordered.includes(k)) ordered.push(k);
+
+  return (
+    <div style={{ width: '100%', padding: '0 10px', overflowX: 'auto' }}>
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          fontSize: 13,
+          backgroundColor: '#fff',
+        }}
+      >
+        <thead>
+          <tr>
+            {ordered.map((k) => (
+              <th
+                key={k}
+                style={{
+                  textAlign: 'left',
+                  padding: '10px 8px',
+                  borderBottom: '2px solid rgba(0,0,0,0.12)',
+                  whiteSpace: 'nowrap',
+                  fontWeight: 600,
+                }}
+              >
+                {k}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, idx) => (
+            <tr key={idx}>
+              {ordered.map((k) => (
+                <td
+                  key={k}
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid rgba(0,0,0,0.06)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {fmt(r?.[k])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function pickCampusRow(objLike) {
+  const row = v0(objLike);
+  if (!row || typeof row !== 'object') return null;
+  const campus =
+    row?.CAMPUS ??
+    row?.campus ??
+    row?.Campus ??
+    row?.nome_campus ??
+    null;
+  const media =
+    row?.media_geral ??
+    row?.MEDIA_GERAL ??
+    row?.media ??
+    row?.MEDIA ??
+    row?.Media ??
+    null;
+  return { campus, media };
+}
+
 export default function DiscenteDashboardClient({ initialData, filtersOptions }) {
   const [activeTab, setActiveTab] = useState('dimensoes');
   const [selectedFilters, setSelectedFilters] = useState({
@@ -307,10 +649,14 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     boxplot: initialData.boxplot,
     atividades: initialData.atividades,
     medias: initialData.medias,
+
+    docDimMedias: initialData.docDimMedias ?? null,
+    docDimProporcoes: initialData.docDimProporcoes ?? null,
+    turmaDimBoxplot: initialData.turmaDimBoxplot ?? null,
+    turmaDimDescritivas: initialData.turmaDimDescritivas ?? null,
   }));
 
   const [detailData, setDetailData] = useState(() => emptyDetailData());
-
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -322,35 +668,106 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     [selectedFilters]
   );
 
+  // ===========================
+  // CARGA GLOBAL (DIMENSÕES)
+  // ===========================
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
 
+    const pFetch = (url, errMsg) =>
+      pooled(
+        () => fetchJson(url, controller.signal, errMsg),
+        controller.signal
+      );
+    const pFetchOpt = (url) =>
+      pooled(
+        () => fetchJsonOptional(url, controller.signal),
+        controller.signal
+      );
+
     const run = async () => {
       setIsLoading(true);
       setError(null);
+
       try {
-        const urls = [
-          make(`/discente/geral/summary?${params}`),
-          make(`/discente/dimensoes/medias?${params}`),
-          make(`/discente/dimensoes/proporcoes?${params}`),
-          make(`/discente/dimensoes/boxplot?${params}`),
-          make(`/discente/atividades/percentual?${params}`),
-        ];
+        const urlSummary = make(`/discente/geral/summary?${params}`);
+        const urlDiscMed = make(`/discente/dimensoes/medias?${params}`);
+        const urlDiscProp = make(`/discente/dimensoes/proporcoes?${params}`);
+        const urlDiscBox = make(`/discente/dimensoes/boxplot?${params}`);
+        const urlDiscAtiv = make(`/discente/atividades/percentual?${params}`);
+
+        const urlDocDimMed = make(`/docente/dimensoes/medias?${params}`);
+        const urlDocDimProp = make(`/docente/dimensoes/proporcoes?${params}`);
+
+        const urlTurmaDimBoxNew = make(
+          `/docente/avaliacaoturma/dimensoes/boxplot?${params}`
+        );
+        const urlTurmaDimDescNew = make(
+          `/docente/avaliacaoturma/dimensoes/descritivas?${params}`
+        );
 
         const [summary, medias, proporcoes, boxplot, atividades] =
           await Promise.all([
-            fetchJson(urls[0], controller.signal, 'Falha ao buscar summary'),
-            fetchJson(urls[1], controller.signal, 'Falha ao buscar medias'),
-            fetchJson(urls[2], controller.signal, 'Falha ao buscar proporcoes'),
-            fetchJson(urls[3], controller.signal, 'Falha ao buscar boxplot'),
-            fetchJson(urls[4], controller.signal, 'Falha ao buscar atividades'),
+            pFetch(urlSummary, 'Falha ao buscar summary'),
+            pFetch(urlDiscMed, 'Falha ao buscar medias'),
+            pFetch(urlDiscProp, 'Falha ao buscar proporcoes'),
+            pFetch(urlDiscBox, 'Falha ao buscar boxplot'),
+            pFetch(urlDiscAtiv, 'Falha ao buscar atividades'),
           ]);
+
+        const [docDimMedias, docDimProporcoes] = await Promise.all([
+          pFetchOpt(urlDocDimMed),
+          pFetchOpt(urlDocDimProp),
+        ]);
+
+        let turmaDimBoxplot = await pFetchOpt(urlTurmaDimBoxNew);
+        if (!turmaDimBoxplot) {
+          turmaDimBoxplot = await pFetchOpt(
+            make(`/docente/dimensoes/boxplot?${params}`)
+          );
+        }
+
+        let turmaDimDescritivas = await pFetchOpt(urlTurmaDimDescNew);
+
+        if (
+          !turmaDimDescritivas &&
+          turmaDimBoxplot &&
+          typeof turmaDimBoxplot === 'object'
+        ) {
+          const hasTabela =
+            Array.isArray(turmaDimBoxplot?.tabela2) ||
+            Array.isArray(turmaDimBoxplot?.tabela) ||
+            Array.isArray(turmaDimBoxplot?.rows);
+
+          if (hasTabela) turmaDimDescritivas = turmaDimBoxplot;
+        }
+
+        if (!turmaDimDescritivas) {
+          turmaDimDescritivas = await pFetchOpt(
+            make(`/docente/avaliacaoturma/dimensoes/estatisticas?${params}`)
+          );
+        }
+
+        if (!turmaDimDescritivas) {
+          turmaDimDescritivas = await pFetchOpt(
+            make(`/docente/dimensoes/descritivas?${params}`)
+          );
+        }
 
         if (cancelled) return;
 
         setSummaryData(summary);
-        setDashboardData({ medias, proporcoes, boxplot, atividades });
+        setDashboardData({
+          medias,
+          proporcoes,
+          boxplot,
+          atividades,
+          docDimMedias,
+          docDimProporcoes,
+          turmaDimBoxplot,
+          turmaDimDescritivas,
+        });
       } catch (err) {
         if (cancelled || err?.name === 'AbortError') return;
         setError(err?.message ?? 'Erro ao carregar dados gerais');
@@ -371,9 +788,23 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     };
   }, [params]);
 
+  // ===========================
+  // CARGA POR ABA (LAZY)
+  // ===========================
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
+
+    const pFetch = (url, errMsg) =>
+      pooled(
+        () => fetchJson(url, controller.signal, errMsg),
+        controller.signal
+      );
+    const pFetchOpt = (url) =>
+      pooled(
+        () => fetchJsonOptional(url, controller.signal),
+        controller.signal
+      );
 
     const runTab = async (tabKey) => {
       if (!tabKey || tabKey === 'dimensoes') return;
@@ -384,245 +815,293 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
       try {
         if (tabKey === 'autoavaliacao') {
-          const [propItens, medItens, boxItens] = await Promise.all([
-            fetchJson(
+          const [
+            propItens,
+            medItens,
+            boxItens,
+
+            // ✅ NOVO: Ação Docente (subdimensões) - discente (Figura 8/6/10)
+            acPropSub,
+            acMedSub,
+            acBoxSub,
+
+            // (mantido) docente: autoavaliação da ação docente
+            adProp,
+            adMed,
+            adBox,
+
+            atiProp,
+            atiMed,
+            atiBox,
+            gesProp,
+            gesMed,
+            gesBox,
+            proProp,
+            proMed,
+            proBox,
+            instProp,
+            instMed,
+            instBox,
+          ] = await Promise.all([
+            pFetch(
               make(`/discente/autoavaliacao/itens/proporcoes?${params}`),
-              controller.signal,
-              'Falha ao buscar autoavaliação (proporções)'
+              'Falha (Autoavaliação proporções)'
             ),
-            fetchJson(
+            pFetch(
               make(`/discente/autoavaliacao/itens/medias?${params}`),
-              controller.signal,
-              'Falha ao buscar autoavaliação (médias)'
+              'Falha (Autoavaliação médias)'
             ),
-            fetchJson(
+            pFetch(
               make(`/discente/autoavaliacao/itens/boxplot?${params}`),
-              controller.signal,
-              'Falha ao buscar autoavaliação (boxplot)'
+              'Falha (Autoavaliação boxplot)'
+            ),
+
+            // ✅ Figura 8 / Figura 6 / Figura 10 (discente)
+            pFetch(
+              make(`/discente/acaodocente/subdimensoes/proporcoes?${params}`),
+              'Falha (Ação Docente subdim proporções)'
+            ),
+            pFetch(
+              make(`/discente/acaodocente/subdimensoes/medias?${params}`),
+              'Falha (Ação Docente subdim médias)'
+            ),
+            pFetchOpt(
+              make(`/discente/acaodocente/subdimensoes/boxplot?${params}`)
+            ), // optional
+
+            // docente (mantido)
+            pFetch(
+              make(`/docente/autoavaliacao/subdimensoes/proporcoes?${params}`),
+              'Falha (Ação Docente docente proporções)'
+            ),
+            pFetch(
+              make(`/docente/autoavaliacao/subdimensoes/medias?${params}`),
+              'Falha (Ação Docente docente médias)'
+            ),
+            pFetch(
+              make(`/docente/autoavaliacao/subdimensoes/boxplot?${params}`),
+              'Falha (Ação Docente docente boxplot)'
+            ),
+
+            pFetch(
+              make(`/discente/atitudeprofissional/itens/proporcoes?${params}`),
+              'Falha (Atitude proporções)'
+            ),
+            pFetch(
+              make(`/discente/atitudeprofissional/itens/medias?${params}`),
+              'Falha (Atitude médias)'
+            ),
+            pFetch(
+              make(`/discente/atitudeprofissional/itens/boxplot?${params}`),
+              'Falha (Atitude boxplot)'
+            ),
+
+            pFetch(
+              make(`/discente/gestaodidatica/itens/proporcoes?${params}`),
+              'Falha (Gestão proporções)'
+            ),
+            pFetch(
+              make(`/discente/gestaodidatica/itens/medias?${params}`),
+              'Falha (Gestão médias)'
+            ),
+            pFetch(
+              make(`/discente/gestaodidatica/itens/boxplot?${params}`),
+              'Falha (Gestão boxplot)'
+            ),
+
+            pFetch(
+              make(`/discente/processoavaliativo/itens/proporcoes?${params}`),
+              'Falha (Processo proporções)'
+            ),
+            pFetch(
+              make(`/discente/processoavaliativo/itens/medias?${params}`),
+              'Falha (Processo médias)'
+            ),
+            pFetch(
+              make(`/discente/processoavaliativo/itens/boxplot?${params}`),
+              'Falha (Processo boxplot)'
+            ),
+
+            pFetch(
+              make(`/discente/instalacoes/itens/proporcoes?${params}`),
+              'Falha (Instalações proporções)'
+            ),
+            pFetch(
+              make(`/discente/instalacoes/itens/medias?${params}`),
+              'Falha (Instalações médias)'
+            ),
+            pFetch(
+              make(`/discente/instalacoes/itens/boxplot?${params}`),
+              'Falha (Instalações boxplot)'
             ),
           ]);
+
           if (cancelled) return;
+
           setDetailData((prev) => ({
             ...prev,
             autoavaliacao: { propItens, medItens, boxItens },
+
+            // ✅ NOVO: discente ação docente subdim (Figura 8/6/10)
+            acao_docente_discente: {
+              propSub: acPropSub,
+              medSub: acMedSub,
+              boxSub: acBoxSub,
+            },
+
+            // docente (mantido)
+            autoavaliacao_docente: { propSub: adProp, medSub: adMed, boxSub: adBox },
+
+            atitude: {
+              ...prev.atitude,
+              discProp: atiProp,
+              discMed: atiMed,
+              discBox: atiBox,
+            },
+            gestao: {
+              ...prev.gestao,
+              discProp: gesProp,
+              discMed: gesMed,
+              discBox: gesBox,
+            },
+            processo: {
+              ...prev.processo,
+              discProp: proProp,
+              discMed: proMed,
+              discBox: proBox,
+            },
+            instalacoes: {
+              ...prev.instalacoes,
+              propItens: instProp,
+              medItens: instMed,
+              boxDisc: instBox,
+            },
           }));
-        } else if (tabKey === 'autoavaliacao_docente') {
-          const [propSub, medSub, boxSub] = await Promise.all([
-            fetchJson(
-              make(`/docente/autoavaliacao/subdimensoes/proporcoes?${params}`),
-              controller.signal,
-              'Falha ao buscar autoavaliação docente (proporções)'
-            ),
-            fetchJson(
-              make(`/docente/autoavaliacao/subdimensoes/medias?${params}`),
-              controller.signal,
-              'Falha ao buscar autoavaliação docente (médias)'
-            ),
-            fetchJson(
-              make(`/docente/autoavaliacao/subdimensoes/boxplot?${params}`),
-              controller.signal,
-              'Falha ao buscar autoavaliação docente (boxplot)'
-            ),
-          ]);
-          if (cancelled) return;
-          setDetailData((prev) => ({
-            ...prev,
-            autoavaliacao_docente: { propSub, medSub, boxSub },
-          }));
-        } else if (tabKey === 'atitude') {
+        } else if (tabKey === 'base_docente') {
           const [
-            discProp,
-            discMed,
-            docProp,
-            docMed,
-            docBox,
-            discBox,
+            turmaMed,
+            turmaProp,
+            subMed,
+            subProp,
+            dimMed,
+            dimProp,
+            atiProp,
+            atiMed,
+            gesProp,
+            gesMed,
+            proProp,
+            proMed,
+            instMedDoc,
+            instPropDoc,
           ] = await Promise.all([
-            fetchJson(
-              make(`/discente/atitudeprofissional/itens/proporcoes?${params}`),
-              controller.signal,
-              'Falha ao buscar atitude (discente proporções)'
+            pFetch(
+              make(`/docente/avaliacaoturma/itens/medias?${params}`),
+              'Falha (turma médias)'
             ),
-            fetchJson(
-              make(`/discente/atitudeprofissional/itens/medias?${params}`),
-              controller.signal,
-              'Falha ao buscar atitude (discente médias)'
+            pFetch(
+              make(`/docente/avaliacaoturma/itens/proporcoes?${params}`),
+              'Falha (turma proporções)'
             ),
-            fetchJson(
+            pFetch(
+              make(`/docente_base/autoavaliacao/subdimensoes/medias?${params}`),
+              'Falha (subdim médias)'
+            ),
+            pFetch(
+              make(`/docente_base/autoavaliacao/subdimensoes/proporcoes?${params}`),
+              'Falha (subdim proporções)'
+            ),
+            pFetch(make(`/docente/dimensoes/medias?${params}`), 'Falha (dim médias)'),
+            pFetch(
+              make(`/docente/dimensoes/proporcoes?${params}`),
+              'Falha (dim proporções)'
+            ),
+
+            pFetch(
               make(`/docente/atitudeprofissional/itens/proporcoes?${params}`),
-              controller.signal,
-              'Falha ao buscar atitude (docente proporções)'
+              'Falha (Atitude docente prop)'
             ),
-            fetchJson(
+            pFetch(
               make(`/docente/atitudeprofissional/itens/medias?${params}`),
-              controller.signal,
-              'Falha ao buscar atitude (docente médias)'
+              'Falha (Atitude docente med)'
             ),
-            fetchJson(
-              make(`/docente/atitudeprofissional/itens/boxplot?${params}`),
-              controller.signal,
-              'Falha ao buscar atitude (docente boxplot)'
+
+            pFetch(
+              make(`/docente/gestaodidatica/itens/proporcoes?${params}`),
+              'Falha (Gestão docente prop)'
             ),
-            fetchJson(
-              make(`/discente/atitudeprofissional/itens/boxplot?${params}`),
-              controller.signal,
-              'Falha ao buscar atitude (discente boxplot)'
+            pFetch(
+              make(`/docente/gestaodidatica/itens/medias?${params}`),
+              'Falha (Gestão docente med)'
+            ),
+
+            pFetch(
+              make(`/docente/processoavaliativo/itens/proporcoes?${params}`),
+              'Falha (Processo docente prop)'
+            ),
+            pFetch(
+              make(`/docente/processoavaliativo/itens/medias?${params}`),
+              'Falha (Processo docente med)'
+            ),
+
+            pFetch(
+              make(`/docente/instalacoes/itens/medias?${params}`),
+              'Falha (Instalações docente med)'
+            ),
+            pFetch(
+              make(`/docente/instalacoes/itens/proporcoes?${params}`),
+              'Falha (Instalações docente prop)'
             ),
           ]);
+
           if (cancelled) return;
           setDetailData((prev) => ({
             ...prev,
-            atitude: { discProp, discMed, discBox, docProp, docMed, docBox },
-          }));
-        } else if (tabKey === 'gestao') {
-          const [discMed, discProp, docMed, docProp, discBox] =
-            await Promise.all([
-              fetchJson(
-                make(`/discente/gestaodidatica/itens/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar gestão (discente médias)'
-              ),
-              fetchJson(
-                make(`/discente/gestaodidatica/itens/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar gestão (discente proporções)'
-              ),
-              fetchJson(
-                make(`/docente/gestaodidatica/itens/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar gestão (docente médias)'
-              ),
-              fetchJson(
-                make(`/docente/gestaodidatica/itens/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar gestão (docente proporções)'
-              ),
-              fetchJson(
-                make(`/discente/gestaodidatica/itens/boxplot?${params}`),
-                controller.signal,
-                'Falha ao buscar gestão (discente boxplot)'
-              ),
-            ]);
-          if (cancelled) return;
-          setDetailData((prev) => ({
-            ...prev,
-            gestao: { discMed, discProp, docMed, docProp, discBox },
-          }));
-        } else if (tabKey === 'processo') {
-          const [discMed, discProp, discBox, docMed, docProp] =
-            await Promise.all([
-              fetchJson(
-                make(`/discente/processoavaliativo/itens/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar processo (discente médias)'
-              ),
-              fetchJson(
-                make(`/discente/processoavaliativo/itens/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar processo (discente proporções)'
-              ),
-              fetchJson(
-                make(`/discente/processoavaliativo/itens/boxplot?${params}`),
-                controller.signal,
-                'Falha ao buscar processo (discente boxplot)'
-              ),
-              fetchJson(
-                make(`/docente/processoavaliativo/itens/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar processo (docente médias)'
-              ),
-              fetchJson(
-                make(`/docente/processoavaliativo/itens/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar processo (docente proporções)'
-              ),
-            ]);
-          if (cancelled) return;
-          setDetailData((prev) => ({
-            ...prev,
-            processo: { discMed, discProp, discBox, docMed, docProp },
+            base_docente: { turmaMed, turmaProp, subMed, subProp, dimMed, dimProp },
+            atitude: { ...prev.atitude, docProp: atiProp, docMed: atiMed },
+            gestao: { ...prev.gestao, docProp: gesProp, docMed: gesMed },
+            processo: { ...prev.processo, docProp: proProp, docMed: proMed },
+            instalacoes: {
+              ...prev.instalacoes,
+              medDoc: instMedDoc,
+              propDoc: instPropDoc,
+            },
           }));
         } else if (tabKey === 'instalacoes') {
-          const [medItens, propItens, boxDisc, medDoc, propDoc] =
-            await Promise.all([
-              fetchJson(
-                make(`/discente/instalacoes/itens/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar instalações (discente médias)'
-              ),
-              fetchJson(
-                make(`/discente/instalacoes/itens/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar instalações (discente proporções)'
-              ),
-              fetchJson(
-                make(`/discente/instalacoes/itens/boxplot?${params}`),
-                controller.signal,
-                'Falha ao buscar instalações (discente boxplot)'
-              ),
-              fetchJson(
-                make(`/docente/instalacoes/itens/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar instalações (docente médias)'
-              ),
-              fetchJson(
-                make(`/docente/instalacoes/itens/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar instalações (docente proporções)'
-              ),
-            ]);
+          const [medItens, propItens, boxDisc, medDoc, propDoc] = await Promise.all([
+            pFetch(
+              make(`/discente/instalacoes/itens/medias?${params}`),
+              'Falha ao buscar instalações (discente médias)'
+            ),
+            pFetch(
+              make(`/discente/instalacoes/itens/proporcoes?${params}`),
+              'Falha ao buscar instalações (discente proporções)'
+            ),
+            pFetch(
+              make(`/discente/instalacoes/itens/boxplot?${params}`),
+              'Falha ao buscar instalações (discente boxplot)'
+            ),
+            pFetch(
+              make(`/docente/instalacoes/itens/medias?${params}`),
+              'Falha ao buscar instalações (docente médias)'
+            ),
+            pFetch(
+              make(`/docente/instalacoes/itens/proporcoes?${params}`),
+              'Falha ao buscar instalações (docente proporções)'
+            ),
+          ]);
+
           if (cancelled) return;
           setDetailData((prev) => ({
             ...prev,
             instalacoes: { medItens, propItens, boxDisc, medDoc, propDoc },
           }));
         } else if (tabKey === 'atividades') {
-          const doc = await fetchJson(
+          const doc = await pFetch(
             make(`/docente/atividades/percentual?${params}`),
-            controller.signal,
             'Falha ao buscar atividades do docente'
           );
           if (cancelled) return;
           setDetailData((prev) => ({ ...prev, atividades: { doc } }));
-        } else if (tabKey === 'base_docente') {
-          const [turmaMed, turmaProp, subMed, subProp, dimMed, dimProp] =
-            await Promise.all([
-              fetchJson(
-                make(`/docente/avaliacaoturma/itens/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar base docente (turma médias)'
-              ),
-              fetchJson(
-                make(`/docente/avaliacaoturma/itens/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar base docente (turma proporções)'
-              ),
-              fetchJson(
-                make(`/docente_base/autoavaliacao/subdimensoes/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar base docente (subdim médias)'
-              ),
-              fetchJson(
-                make(`/docente_base/autoavaliacao/subdimensoes/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar base docente (subdim proporções)'
-              ),
-              fetchJson(
-                make(`/docente/dimensoes/medias?${params}`),
-                controller.signal,
-                'Falha ao buscar base docente (dim médias)'
-              ),
-              fetchJson(
-                make(`/docente/dimensoes/proporcoes?${params}`),
-                controller.signal,
-                'Falha ao buscar base docente (dim proporções)'
-              ),
-            ]);
-          if (cancelled) return;
-          setDetailData((prev) => ({
-            ...prev,
-            base_docente: { turmaMed, turmaProp, subMed, subProp, dimMed, dimProp },
-          }));
         }
 
         if (!cancelled) setLoadedTabs((p) => ({ ...p, [tabKey]: true }));
@@ -644,8 +1123,10 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
   const datasets = useMemo(
     () => ({
-      proporcoes: formatProporcoesChartData(dashboardData.proporcoes),
-      medias: formatMediasChartData(dashboardData.medias),
+      discProporcoes: formatProporcoesChartData(dashboardData.proporcoes),
+      discMedias: formatMediasChartData(dashboardData.medias),
+      docProporcoes: formatProporcoesDimDocente(dashboardData.docDimProporcoes),
+      docMedias: formatMediasDimDocente(dashboardData.docDimMedias),
       atividades: formatAtividadesChartData(dashboardData.atividades),
     }),
     [dashboardData]
@@ -656,59 +1137,61 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     setSelectedFilters((prev) => ({ ...prev, [name]: value }));
   };
 
-  const tabs = useMemo(
-    () => [
-      { key: 'dimensoes', label: 'Dimensões Gerais' },
-      { key: 'autoavaliacao', label: 'Autoavaliação Discente' },
-      { key: 'autoavaliacao_docente', label: 'Autoavaliação Docente' },
-      { key: 'atividades', label: 'Atividades Acadêmicas' },
-      { key: 'base_docente', label: 'Base Docente' },
-      { key: 'atitude', label: 'Atitude Profissional' },
-      { key: 'gestao', label: 'Gestão Didática' },
-      { key: 'processo', label: 'Processo Avaliativo' },
-      { key: 'instalacoes', label: 'Instalações Físicas' },
-    ],
-    []
-  );
+// ✅ TABS OK (ORDEM + RENOMEAÇÃO)
+const tabs = useMemo(
+  () => [
+    { key: 'dimensoes', label: 'Dimensões Gerais' },
+    { key: 'autoavaliacao', label: 'Autoavaliação Discente' },
 
-  const isBlockingLoading = isLoading || !!tabLoading[activeTab];
+    // ✅ antes: "Base Docente"
+    { key: 'base_docente', label: 'Avaliação da Ação Docente' },
+
+    { key: 'instalacoes', label: 'Instalações Físicas' },
+    { key: 'atividades', label: 'Atividades Acadêmicas' },
+  ],
+  []
+);
+
+  const isGlobalLoading = isLoading;
+  const isTabLoading = !!tabLoading[activeTab];
 
   const dd = detailData;
+
+  // Autoavaliação + subdim docente (ação docente)
   const itensAutoProp = dd.autoavaliacao?.propItens;
   const itensAutoMed = dd.autoavaliacao?.medItens;
   const itensAutoBox = dd.autoavaliacao?.boxItens;
+
+  // ✅ NOVO: Figura 8/6/10 (discente ação docente subdim)
+  const acaoDocSubPropDisc = dd.acao_docente_discente?.propSub;
+  const acaoDocSubMedDisc = dd.acao_docente_discente?.medSub;
+  const acaoDocSubBoxDisc = dd.acao_docente_discente?.boxSub;
 
   const docenteProp = dd.autoavaliacao_docente?.propSub;
   const docenteMed = dd.autoavaliacao_docente?.medSub;
   const docenteBox = dd.autoavaliacao_docente?.boxSub;
 
+  // Discente (autoavaliacao tab)
   const itensAtitudePropDisc = dd.atitude?.discProp;
   const itensAtitudeMedDisc = dd.atitude?.discMed;
   const itensAtitudeBoxDisc = dd.atitude?.discBox;
-  const itensAtitudePropDoc = dd.atitude?.docProp;
-  const itensAtitudeMedDoc = dd.atitude?.docMed;
-  const itensAtitudeBoxDoc = dd.atitude?.docBox;
 
   const itensGestaoMedDisc = dd.gestao?.discMed;
   const itensGestaoPropDisc = dd.gestao?.discProp;
-  const itensGestaoMedDoc = dd.gestao?.docMed;
-  const itensGestaoPropDoc = dd.gestao?.docProp;
   const itensGestaoBoxDisc = dd.gestao?.discBox;
 
   const procDiscMed = dd.processo?.discMed;
   const procDiscProp = dd.processo?.discProp;
   const procDiscBox = dd.processo?.discBox;
-  const procDocMed = dd.processo?.docMed;
-  const procDocProp = dd.processo?.docProp;
 
   const itensInstalacoesMed = dd.instalacoes?.medItens;
   const itensInstalacoesProp = dd.instalacoes?.propItens;
   const itensInstalacoesBoxDisc = dd.instalacoes?.boxDisc;
-  const itensInstalacoesMedDoc = dd.instalacoes?.medDoc;
-  const itensInstalacoesPropDoc = dd.instalacoes?.propDoc;
 
+  // Atividades
   const atividadesDoc = dd.atividades?.doc;
 
+  // Base docente
   const docTurmaMed = dd.base_docente?.turmaMed;
   const docTurmaProp = dd.base_docente?.turmaProp;
   const docSubMed = dd.base_docente?.subMed;
@@ -716,18 +1199,45 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
   const docDimMed = dd.base_docente?.dimMed;
   const docDimProp = dd.base_docente?.dimProp;
 
+  const itensAtitudePropDoc = dd.atitude?.docProp;
+  const itensAtitudeMedDoc = dd.atitude?.docMed;
+
+  const itensGestaoMedDoc = dd.gestao?.docMed;
+  const itensGestaoPropDoc = dd.gestao?.docProp;
+
+  const procDocMed = dd.processo?.docMed;
+  const procDocProp = dd.processo?.docProp;
+
+  const itensInstalacoesMedDoc = dd.instalacoes?.medDoc;
+  const itensInstalacoesPropDoc = dd.instalacoes?.propDoc;
+
   const xTicksNoRot = { maxRotation: 0, minRotation: 0, autoSkip: false };
+
+  const bestCampus =
+    pickCampusRow(summaryData?.campus_melhor_avaliado) ||
+    pickCampusRow(summaryData?.melhor_campus_global) ||
+    pickCampusRow(summaryData?.campusMelhorAvaliado) ||
+    null;
+
+  const worstCampus =
+    pickCampusRow(summaryData?.campus_pior_avaliado) ||
+    pickCampusRow(summaryData?.pior_campus_global) ||
+    pickCampusRow(summaryData?.campusPiorAvaliado) ||
+    null;
+
   return (
     <>
-      {isBlockingLoading && <LoadingOverlay isFullScreen />}
+      {isGlobalLoading && <LoadingOverlay isFullScreen />}
 
       <div
         style={{
-          opacity: isBlockingLoading ? 0.35 : 1,
-          pointerEvents: isBlockingLoading ? 'none' : 'auto',
+          opacity: isGlobalLoading ? 0.35 : 1,
+          pointerEvents: isGlobalLoading ? 'none' : 'auto',
+          position: 'relative',
         }}
       >
         {error && <p className={styles.errorMessage}>{error}</p>}
+
         {!error && (
           <>
             <div className={styles.statsGrid}>
@@ -736,16 +1246,26 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                 value={v0(summaryData?.total_respondentes) ?? '...'}
                 icon={<Users />}
               />
+
               <StatCard
                 title="Campus Melhor Avaliado"
-                value={v0(summaryData?.campus_melhor_avaliado?.campus) ?? '...'}
-                subtitle={`Média: ${v0(summaryData?.campus_melhor_avaliado?.media) ?? 'N/A'}`}
+                value={bestCampus?.campus ?? 'N/D'}
+                subtitle={`Média: ${
+                  bestCampus?.media !== null && bestCampus?.media !== undefined
+                    ? Number(bestCampus.media).toFixed(2)
+                    : 'N/D'
+                }`}
                 icon={<TrendingUp />}
               />
+
               <StatCard
                 title="Campus Pior Avaliado"
-                value={v0(summaryData?.campus_pior_avaliado?.campus) ?? '...'}
-                subtitle={`Média: ${v0(summaryData?.campus_pior_avaliado?.media) ?? 'N/A'}`}
+                value={worstCampus?.campus ?? 'N/D'}
+                subtitle={`Média: ${
+                  worstCampus?.media !== null && worstCampus?.media !== undefined
+                    ? Number(worstCampus.media).toFixed(2)
+                    : 'N/D'
+                }`}
                 icon={<TrendingDown />}
               />
             </div>
@@ -771,593 +1291,125 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                 ))}
               </div>
 
-              <div className={styles.chartDisplayArea}>
+              <div
+                className={styles.chartDisplayArea}
+                style={{
+                  position: 'relative',
+                  minHeight: '300px',
+                  overflow: 'visible',
+                  height: 'auto',
+                }}
+              >
+                {isTabLoading && <LoadingOverlay />}
+
+                {/* ✅ 1) Dimensões Gerais */}
                 {activeTab === 'dimensoes' && (
-                  <div className={styles.dashboardLayout}>
-                    <div className={styles.chartContainer}>
-                      <ActivityChart
-                        chartData={datasets.proporcoes}
-                        title="Proporções de respostas por Dimensão"
-                      />
-                    </div>
-                    <div className={styles.sideCharts}>
-                      <div className={styles.chartContainer}>
-                        <ActivityChart
-                          chartData={datasets.medias}
-                          title="Médias por Dimensão"
-                          customOptions={{
-                            plugins: { legend: { display: false } },
-                          }}
-                        />
-                      </div>
-                      <div className={styles.chartContainer}>
-                        {dashboardData.boxplot ? (
-                          <BoxplotChart
-                            apiData={dashboardData.boxplot}
-                            title="Distribuição das Médias das Avaliações"
-                          />
-                        ) : (
-                          <p>Carregando...</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <DimensoesGeraisTab
+                    datasets={datasets}
+                    dashboardData={dashboardData}
+                    styles={styles}
+                    disableZoomOptions={disableZoomOptions}
+                    twoDecTooltip={twoDecTooltip}
+                    renderDescritivasTable={renderDescritivasTable}
+                  />
                 )}
 
+                {/* ✅ 2) Autoavaliação Discente */}
                 {activeTab === 'autoavaliacao' && (
-                  <div style={{ position: 'relative' }}>
-                    <div>
-                      <div
-                        className={styles.chartContainer}
-                        style={{ marginBottom: '1rem', height: 500 }}
-                      >
-                        {itensAutoProp ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(itensAutoProp)}
-                            title="Proporções de respostas — Itens de Autoavaliação (Discente)"
-                          />
-                        ) : (
-                          <p>Dados de proporções não disponíveis.</p>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: '1rem' }}>
-                        <div className={styles.chartContainer} style={{ flex: 1, height: 400 }}>
-                          {itensAutoMed ? (
-                            <ActivityChart
-                              chartData={formatMediasItensChartData(itensAutoMed)}
-                              title="Médias — Itens de Autoavaliação (Discente)"
-                              customOptions={{
-                                plugins: { legend: { display: false } },
-                              }}
-                            />
-                          ) : (
-                            <p>Dados de médias não disponíveis.</p>
-                          )}
-                        </div>
-                        <div className={styles.chartContainer} style={{ flex: 1, height: 400 }}>
-                          {itensAutoBox ? (
-                            <BoxplotChart apiData={itensAutoBox} title="Boxplot Discente" />
-                          ) : (
-                            <p>Dados de boxplot não disponíveis.</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <AutoavaliacaoTab
+                    styles={styles}
+                    disableZoomOptions={disableZoomOptions}
+                    twoDecTooltip={twoDecTooltip}
+                    xTicksNoRot={xTicksNoRot}
+                    renderDescritivasTable={renderDescritivasTable}
+                    formatMediasSubdimChartData={formatMediasSubdimChartData}
+                    formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
+                    formatMediasItensChartData={formatMediasItensChartData}
+                    formatProporcoesItensChartData={formatProporcoesItensChartData}
+                    // ✅ Figura 8/6/10 (discente - ação docente subdim)
+                    acaoDocSubMedDisc={acaoDocSubMedDisc}
+                    acaoDocSubPropDisc={acaoDocSubPropDisc}
+                    acaoDocSubBoxDisc={acaoDocSubBoxDisc}
+                    // (mantido) docente
+                    docenteMed={docenteMed}
+                    docenteProp={docenteProp}
+                    docenteBox={docenteBox}
+                    itensAutoMed={itensAutoMed}
+                    itensAutoProp={itensAutoProp}
+                    itensAutoBox={itensAutoBox}
+                    itensAtitudeMedDisc={itensAtitudeMedDisc}
+                    itensAtitudePropDisc={itensAtitudePropDisc}
+                    itensAtitudeBoxDisc={itensAtitudeBoxDisc}
+                    itensGestaoMedDisc={itensGestaoMedDisc}
+                    itensGestaoPropDisc={itensGestaoPropDisc}
+                    itensGestaoBoxDisc={itensGestaoBoxDisc}
+                    procDiscMed={procDiscMed}
+                    procDiscProp={procDiscProp}
+                    procDiscBox={procDiscBox}
+                    itensInstalacoesMed={itensInstalacoesMed}
+                    itensInstalacoesProp={itensInstalacoesProp}
+                    itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
+                  />
                 )}
 
-                {activeTab === 'autoavaliacao_docente' && (
-                  <div style={{ position: 'relative' }}>
-                    <div>
-                      <div
-                        className={styles.chartContainer}
-                        style={{ marginBottom: '1rem', height: 500 }}
-                      >
-                        {docenteProp ? (
-                          <ActivityChart
-                            chartData={formatProporcoesSubdimChartData(docenteProp)}
-                            title="Proporções por Subdimensão — Autoavaliação Docente"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip() },
-                            }}
-                          />
-                        ) : (
-                          <p>Dados de proporções não disponíveis.</p>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: '1rem' }}>
-                        <div className={styles.chartContainer} style={{ flex: 1, height: 400 }}>
-                          {docenteMed ? (
-                            <ActivityChart
-                              chartData={formatMediasSubdimChartData(docenteMed)}
-                              title="Médias por Subdimensão — Autoavaliação Docente"
-                              customOptions={{
-                                plugins: {
-                                  legend: { display: false },
-                                  tooltip: twoDecTooltip(),
-                                },
-                                scales: { y: { max: 4 } },
-                              }}
-                            />
-                          ) : (
-                            <p>Dados de médias não disponíveis.</p>
-                          )}
-                        </div>
-                        <div className={styles.chartContainer} style={{ flex: 1, height: 400 }}>
-                          {docenteBox ? (
-                            <BoxplotChart
-                              apiData={docenteBox}
-                              title="Boxplot das Médias — Autoavaliação Docente"
-                            />
-                          ) : (
-                            <p>Dados de boxplot não disponíveis.</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
+                {/* ✅ 3) Atividades Acadêmicas */}
                 {activeTab === 'atividades' && (
-                  <div style={{ position: 'relative' }}>
-                    <div className={styles.dashboardLayout} style={{ gridTemplateColumns: '1fr' }}>
-                      <div className={styles.chartContainerFlex}>
-                        <ActivityChart
-                          chartData={datasets.atividades}
-                          title="Percentual de Participação em Atividades (Discente)"
-                          customOptions={{
-                            plugins: { tooltip: twoDecTooltip('%') },
-                            scales: { x: { ticks: xTicksNoRot } },
-                          }}
-                        />
-                      </div>
-
-                      <div className={styles.chartContainerFlex}>
-                        {atividadesDoc ? (
-                          <ActivityChart
-                            chartData={formatAtividadesChartData(atividadesDoc)}
-                            title="Percentual de Participação em Atividades (Docente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              scales: { x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Dados de atividades do docente não disponíveis.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <AtividadesAcademicasTab
+                    styles={styles}
+                    disableZoomOptions={disableZoomOptions}
+                    twoDecTooltip={twoDecTooltip}
+                    xTicksNoRot={xTicksNoRot}
+                    discenteChartData={datasets.atividades}
+                    atividadesDoc={atividadesDoc}
+                    formatAtividadesChartData={formatAtividadesChartData}
+                  />
                 )}
 
+                {/* ✅ 4) Base Docente */}
                 {activeTab === 'base_docente' && (
-                  <div style={{ position: 'relative' }}>
-                    <div
-                      className={styles.dashboardLayout}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-                        gap: '1rem',
-                      }}
-                    >
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {docTurmaProp ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(docTurmaProp)}
-                            title="Proporções — Itens de Avaliação da Turma (Docente)"
-                            customOptions={{
-                              layout: { padding: { top: 8, right: -12, bottom: 0, left: -30 } },
-                              scales: { y: { max: 100 }, x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções (itens) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {docTurmaMed ? (
-                          <ActivityChart
-                            chartData={formatMediasItensChartData(docTurmaMed)}
-                            title="Médias dos itens — Avaliação da Turma (Docente)"
-                            customOptions={{
-                              plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
-                              layout: { padding: { top: 8, right: 6, bottom: 0, left: 6 } },
-                              scales: { x: { ticks: xTicksNoRot }, y: { max: 4 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Médias (itens) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {docSubMed ? (
-                          <ActivityChart
-                            chartData={formatMediasSubdimChartData(docSubMed)}
-                            title="Médias por Subdimensão — Autoavaliação da Ação Docente (Base Docente)"
-                            customOptions={{
-                              plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
-                              layout: { padding: { top: 10, right: 6, bottom: 0, left: 6 } },
-                              scales: { y: { max: 5 }, x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Médias por subdimensão não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {docSubProp ? (
-                          <ActivityChart
-                            chartData={formatProporcoesSubdimChartData(docSubProp)}
-                            title="Proporções por Subdimensão — Autoavaliação da Ação Docente (Base Docente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              layout: { padding: { top: 50, right: 6, bottom: 0, left: 1 } },
-                              scales: { x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções por subdimensão não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {docDimMed ? (
-                          <ActivityChart
-                            chartData={formatMediasDimDocente(docDimMed)}
-                            title="Médias por Dimensão (Docente)"
-                            customOptions={{
-                              plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
-                              layout: { padding: { top: 8, right: 6, bottom: 0, left: 6 } },
-                              scales: { y: { max: 5 }, x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Médias por dimensão não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {docDimProp ? (
-                          <ActivityChart
-                            chartData={formatProporcoesDimDocente(docDimProp)}
-                            title="Proporções por Dimensão (Docente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              layout: { padding: { top: 8, right: 6, bottom: 0, left: 6 } },
-                              scales: { x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções por dimensão não disponíveis.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <BaseDocenteTab
+                    styles={styles}
+                    disableZoomOptions={disableZoomOptions}
+                    twoDecTooltip={twoDecTooltip}
+                    xTicksNoRot={xTicksNoRot}
+                    formatMediasSubdimChartData={formatMediasSubdimChartData}
+                    formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
+                    formatMediasItensChartData={formatMediasItensChartData}
+                    formatProporcoesItensChartData={formatProporcoesItensChartData}
+                    normalizeAtitudeDocenteChartData={normalizeAtitudeDocenteChartData}
+                    formatMediasDimDocente={formatMediasDimDocente}
+                    formatProporcoesDimDocente={formatProporcoesDimDocente}
+                    docSubMed={docSubMed}
+                    docSubProp={docSubProp}
+                    docTurmaMed={docTurmaMed}
+                    docTurmaProp={docTurmaProp}
+                    itensAtitudeMedDoc={itensAtitudeMedDoc}
+                    itensAtitudePropDoc={itensAtitudePropDoc}
+                    itensGestaoMedDoc={itensGestaoMedDoc}
+                    itensGestaoPropDoc={itensGestaoPropDoc}
+                    procDocMed={procDocMed}
+                    procDocProp={procDocProp}
+                    itensInstalacoesMedDoc={itensInstalacoesMedDoc}
+                    itensInstalacoesPropDoc={itensInstalacoesPropDoc}
+                    docDimMed={docDimMed}
+                    docDimProp={docDimProp}
+                  />
                 )}
 
-                {activeTab === 'atitude' && (
-                  <div style={{ position: 'relative' }}>
-                    <div
-                      className={styles.dashboardLayout}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-                        gap: '1rem',
-                      }}
-                    >
-                      <div className={styles.chartContainer}>
-                        {itensAtitudeMedDisc ? (
-                          <ActivityChart
-                            chartData={formatMediasItensChartData(itensAtitudeMedDisc)}
-                            title="Médias — Itens de Atitude Profissional (Discente)"
-                            customOptions={{
-                              plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
-                              scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Médias (Discente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {itensAtitudeMedDoc ? (
-                          <ActivityChart
-                            chartData={normalizeAtitudeDocenteChartData(
-                              formatMediasItensChartData(itensAtitudeMedDoc)
-                            )}
-                            title="Médias — Itens de Atitude Profissional (Docente)"
-                            customOptions={{
-                              plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
-                              scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Médias (Docente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {itensAtitudePropDisc ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(itensAtitudePropDisc)}
-                            title="Proporções — Itens de Atitude Profissional (Discente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções (Discente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {itensAtitudePropDoc ? (
-                          <ActivityChart
-                            chartData={normalizeAtitudeDocenteChartData(
-                              formatProporcoesItensChartData(itensAtitudePropDoc)
-                            )}
-                            title="Proporções — Itens de Atitude Profissional (Docente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções (Docente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {itensAtitudeBoxDisc ? (
-                          <BoxplotChart
-                            apiData={itensAtitudeBoxDisc}
-                            title="Boxplot — Distribuição das Médias por Item (Atitude Profissional • Discente)"
-                          />
-                        ) : (
-                          <p>Boxplot (Discente) não disponível.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'gestao' && (
-                  <div style={{ position: 'relative' }}>
-                    <div
-                      className={styles.dashboardLayout}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-                        gap: '1rem',
-                      }}
-                    >
-                      <div className={styles.chartContainer}>
-                        {itensGestaoMedDisc ? (
-                          <ActivityChart
-                            chartData={formatMediasItensChartData(itensGestaoMedDisc)}
-                            title="Médias — Itens de Gestão Didática (Discente)"
-                            customOptions={{
-                              plugins: { legend: { display: false } },
-                              scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Médias (Discente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {itensGestaoMedDoc && itensGestaoMedDoc.length > 0 ? (
-                          <ActivityChart
-                            chartData={formatMediasItensChartData(itensGestaoMedDoc)}
-                            title="Médias — Itens de Gestão Didática (Docente)"
-                            customOptions={{
-                              plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
-                              scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
-                            }}
-                          />
-                        ) : (
-                          <p>Médias — Itens de Gestão Didática (Docente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {itensGestaoPropDisc ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(itensGestaoPropDisc)}
-                            title="Proporções — Itens de Gestão Didática (Discente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções (Discente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {itensGestaoPropDoc && itensGestaoPropDoc.length > 0 ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(itensGestaoPropDoc)}
-                            title="Proporções — Itens de Gestão Didática (Docente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções — Itens de Gestão Didática (Docente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {itensGestaoBoxDisc ? (
-                          <BoxplotChart
-                            apiData={itensGestaoBoxDisc}
-                            title="Boxplot — Distribuição das Médias por Item (Gestão Didática • Discente)"
-                          />
-                        ) : (
-                          <p>Boxplot — Gestão Didática (Discente) não disponível.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'processo' && (
-                  <div style={{ position: 'relative' }}>
-                    <div
-                      className={styles.dashboardLayout}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-                        gap: '1rem',
-                      }}
-                    >
-                      <div className={styles.chartContainer}>
-                        {procDiscMed ? (
-                          <ActivityChart
-                            chartData={formatMediasItensChartData(procDiscMed)}
-                            title="Médias — Itens de Processo Avaliativo (Discente)"
-                            customOptions={{
-                              plugins: { legend: { display: false } },
-                              scales: { y: { max: 4 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Dados de médias (Discente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {procDocMed ? (
-                          <ActivityChart
-                            chartData={formatMediasItensChartData(procDocMed)}
-                            title="Médias — Itens de Processo Avaliativo (Docente)"
-                            customOptions={{
-                              plugins: { legend: { display: false } },
-                              scales: { y: { max: 4 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Dados de médias (Docente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {procDiscProp ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(procDiscProp)}
-                            title="Proporções — Itens de Processo Avaliativo (Discente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções (Discente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {procDocProp ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(procDocProp)}
-                            title="Proporções — Itens de Processo Avaliativo (Docente)"
-                            customOptions={{
-                              plugins: { tooltip: twoDecTooltip('%') },
-                              scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
-                            }}
-                          />
-                        ) : (
-                          <p>Proporções (Docente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer} style={{ gridColumn: '1 / -1' }}>
-                        {procDiscBox ? (
-                          <BoxplotChart
-                            apiData={procDiscBox}
-                            title="Boxplot — Distribuição das Médias por Item (Processo Avaliativo • Discente)"
-                          />
-                        ) : (
-                          <p>Boxplot (Discente) não disponível.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
+                {/* ✅ 5) Instalações Físicas */}
                 {activeTab === 'instalacoes' && (
-                  <div style={{ position: 'relative' }}>
-                    <div className={styles.dashboardLayout} style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-                      <div className={styles.chartContainer}>
-                        {itensInstalacoesProp ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(itensInstalacoesProp)}
-                            title="Proporções — Itens de Instalações Físicas (Discente)"
-                            customOptions={{ plugins: { tooltip: twoDecTooltip('%') } }}
-                          />
-                        ) : (
-                          <p>Dados não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {itensInstalacoesPropDoc ? (
-                          <ActivityChart
-                            chartData={formatProporcoesItensChartData(itensInstalacoesPropDoc)}
-                            title="Proporções — Itens de Instalações Físicas (Docente)"
-                            customOptions={{ plugins: { tooltip: twoDecTooltip('%') } }}
-                          />
-                        ) : (
-                          <p>Proporções (Docente) não disponíveis.</p>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1rem' }}>
-                        <div className={styles.chartContainer}>
-                          {itensInstalacoesMed ? (
-                            <ActivityChart
-                              chartData={formatMediasItensChartData(itensInstalacoesMed)}
-                              title="Médias — Itens de Instalações Físicas (Discente)"
-                              customOptions={{ plugins: { legend: { display: false } }, scales: { y: { max: 4 } } }}
-                            />
-                          ) : (
-                            <p>Dados não disponíveis.</p>
-                          )}
-                        </div>
-                        <div className={styles.chartContainer}>
-                          {itensInstalacoesMedDoc ? (
-                            <ActivityChart
-                              chartData={formatMediasItensChartData(itensInstalacoesMedDoc)}
-                              title="Médias — Itens de Instalações Físicas (Docente)"
-                              customOptions={{ plugins: { legend: { display: false } }, scales: { y: { max: 4 } } }}
-                            />
-                          ) : (
-                            <p>Médias (Docente) não disponíveis.</p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className={styles.chartContainer}>
-                        {itensInstalacoesBoxDisc ? (
-                          <BoxplotChart
-                            apiData={itensInstalacoesBoxDisc}
-                            title="Boxplot — Distribuição das Médias por Item (Instalações Físicas • Discente)"
-                          />
-                        ) : (
-                          <p>Boxplot (Discente) não disponível.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <InstalacoesFisicasTab
+                    styles={styles}
+                    disableZoomOptions={disableZoomOptions}
+                    twoDecTooltip={twoDecTooltip}
+                    formatProporcoesItensChartData={formatProporcoesItensChartData}
+                    formatMediasItensChartData={formatMediasItensChartData}
+                    itensInstalacoesProp={itensInstalacoesProp}
+                    itensInstalacoesPropDoc={itensInstalacoesPropDoc}
+                    itensInstalacoesMed={itensInstalacoesMed}
+                    itensInstalacoesMedDoc={itensInstalacoesMedDoc}
+                    itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
+                  />
                 )}
               </div>
             </div>

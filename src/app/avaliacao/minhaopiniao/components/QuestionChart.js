@@ -26,7 +26,7 @@ ChartJS.register(
 );
 
 /* ======================================================
-   Helpers de Tooltip (Mantidos conforme seu código original)
+   Helpers de Tooltip
 ====================================================== */
 function wrapLines(text, max = 70) {
   if (!text) return [];
@@ -90,15 +90,23 @@ function getOrCreateTooltipEl() {
 function externalTooltipHandler(context, questionMap) {
   const { chart, tooltip } = context;
   const tooltipEl = getOrCreateTooltipEl();
+  
   if (!tooltip || !tooltip.dataPoints || tooltip.dataPoints.length === 0) {
     hideTooltip(tooltipEl);
     return;
   }
+  
   tooltipEl.__activeCanvas = chart.canvas;
   const item = tooltip.dataPoints[0];
-  const key = item?.label || '';
-  const fullText = questionMap?.[key] || '';
+  
+  // Ajuste de robustez: Trata casos onde o label vem como array ou tem espaços extras
+  const rawLabel = item?.label || '';
+  const key = Array.isArray(rawLabel) ? rawLabel.join(' ') : String(rawLabel).trim();
+  
+  // Busca o texto da pergunta ou exibe um aviso para facilitar o debug
+  const fullText = questionMap?.[key] || `Pergunta não encontrada para: "${key}"`;
   const wrapped = wrapLines(fullText, 70);
+  
   const value = item?.parsed?.y;
   const formatted = value === null || value === undefined ? '' : Number(value).toFixed(2).replace('.', ',');
 
@@ -114,6 +122,7 @@ function externalTooltipHandler(context, questionMap) {
   const canvasRect = chart.canvas.getBoundingClientRect();
   let x = canvasRect.left + tooltip.caretX - (tooltipEl.offsetWidth / 2);
   let y = canvasRect.top + tooltip.caretY - tooltipEl.offsetHeight - 12;
+  
   tooltipEl.style.left = `${x}px`;
   tooltipEl.style.top = `${y}px`;
   tooltipEl.style.opacity = '1';
@@ -139,14 +148,13 @@ export default function QuestionChart({
         display: true,
         text: title,
         font: { size: 18, weight: 'bold' },
-        padding: { bottom: 25 }, // Espaço entre título e números
+        padding: { bottom: 25 }, 
       },
 
-      // 3. Configuração para exibir números ACIMA das barras
       datalabels: {
-        anchor: 'end', // Fixa no topo da barra
-        align: 'top',  // Posiciona acima do topo
-        offset: 5,     // Distância da barra
+        anchor: 'end', 
+        align: 'top',  
+        offset: 5,     
         color: '#444',
         font: { weight: 'bold', size: 12 },
         formatter: (value) => value.toFixed(2),
@@ -159,7 +167,7 @@ export default function QuestionChart({
     },
 
     layout: {
-      // 4. Padding superior aumentado para o número do "5,00" não ser cortado
+      // Padding mantido para evitar que o "5,00" do datalabel seja cortado no topo
       padding: { top: 30, left: 10, right: 10, bottom: 10 },
     },
 
@@ -174,7 +182,7 @@ export default function QuestionChart({
       y: {
         beginAtZero: true,
         min: 0,
-        max: 5.5, // 5. Ajustado de 5 para 5.5 para criar espaço visual no topo
+        max: 5, // Limite máximo ajustado estritamente para 5
         ticks: { stepSize: 1 },
       },
       x: {
