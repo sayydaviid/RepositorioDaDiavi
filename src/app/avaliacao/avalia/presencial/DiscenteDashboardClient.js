@@ -626,6 +626,12 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     curso: 'todos',
   });
 
+  const [dynamicFilters, setDynamicFilters] = useState({
+    anos: filtersOptions?.anos ?? [],
+    campus: filtersOptions?.campus ?? [],
+    cursos: filtersOptions?.cursos ?? [],
+  });
+
   const [summaryData, setSummaryData] = useState(initialData?.summary ?? null);
   const [dashboardData, setDashboardData] = useState(() => ({
     proporcoes: initialData?.proporcoes ?? null,
@@ -651,6 +657,47 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     () => new URLSearchParams(selectedFilters).toString(),
     [selectedFilters]
   );
+
+  useEffect(() => {
+    if (!selectedFilters.ano) {
+      setDynamicFilters({
+        anos: filtersOptions?.anos ?? [],
+        campus: [],
+        cursos: [],
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadYearFilters = async () => {
+      try {
+        const res = await fetch(
+          make(`/filters?ano=${encodeURIComponent(selectedFilters.ano)}`),
+          { signal: controller.signal }
+        );
+
+        if (!res.ok) {
+          throw new Error('Falha ao carregar filtros do ano selecionado');
+        }
+
+        const data = await res.json();
+
+        setDynamicFilters({
+          anos: data?.anos ?? filtersOptions?.anos ?? [],
+          campus: data?.campus ?? [],
+          cursos: data?.cursos ?? [],
+        });
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+        setError(err?.message ?? 'Erro ao carregar filtros');
+      }
+    };
+
+    loadYearFilters();
+
+    return () => controller.abort();
+  }, [selectedFilters.ano, filtersOptions]);
 
   useEffect(() => {
     if (!hasSelectedYear) {
@@ -1122,7 +1169,22 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setSelectedFilters((prev) => ({ ...prev, [name]: value }));
+
+    setSelectedFilters((prev) => {
+      if (name === 'ano') {
+        return {
+          ...prev,
+          ano: value,
+          campus: 'todos',
+          curso: 'todos',
+        };
+      }
+
+      return {
+        ...prev,
+        [name]: value,
+      };
+    });
   };
 
   const tabs = useMemo(
@@ -1259,7 +1321,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
             <div style={{ marginTop: '1rem', marginBottom: '0.75rem' }}>
               <DiscenteFilters
-                filters={filtersOptions}
+                filters={dynamicFilters}
                 selectedFilters={selectedFilters}
                 onFilterChange={handleFilterChange}
               />
