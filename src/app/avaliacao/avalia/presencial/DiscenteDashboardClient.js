@@ -290,13 +290,9 @@ function normalizeAtitudeDocenteChartData(chartData) {
 
 const v0 = (x) => (Array.isArray(x) ? x?.[0] : x);
 
-// ✅ atualizado: inclui acao_docente_discente
 const emptyDetailData = () => ({
   autoavaliacao: { propItens: null, medItens: null, boxItens: null },
-
-  // ✅ Ação Docente (subdimensões) - base discente (Figura 8/6/10)
   acao_docente_discente: { propSub: null, medSub: null, boxSub: null },
-
   autoavaliacao_docente: { propSub: null, medSub: null, boxSub: null },
   atitude: {
     discProp: null,
@@ -381,9 +377,6 @@ function renderDescritivasTable(apiData) {
       </p>
     );
 
-  // -----------------------------
-  // Helpers
-  // -----------------------------
   const hasOwn = (obj, k) => Object.prototype.hasOwnProperty.call(obj, k);
 
   const pick = (obj, candidates) => {
@@ -398,11 +391,6 @@ function renderDescritivasTable(apiData) {
     return String(v);
   };
 
-  // -----------------------------
-  // ✅ Caso especial: tabela_items (por item) -> TRANSPOSTA
-  // Esperado: rows = [{ item, Min, Q1, Mediana, Media, Q3, Max }, ...]
-  // Saída: Estatística | 1.1.1 | 1.1.2 | ...
-  // -----------------------------
   const firstKeys = Object.keys(rows[0] || {});
   const hasItemCol = firstKeys.some((k) => k.toLowerCase() === 'item');
   const hasMinLike = firstKeys.some((k) => k.toLowerCase() === 'min');
@@ -411,7 +399,6 @@ function renderDescritivasTable(apiData) {
     const itemKey =
       firstKeys.find((k) => k.toLowerCase() === 'item') || 'item';
 
-    // Mapa item -> linha original
     const byItem = new Map();
     for (const r of rows) {
       const it = pick(r, [itemKey, 'Item', 'ITEM']);
@@ -422,7 +409,6 @@ function renderDescritivasTable(apiData) {
 
     const items = Array.from(byItem.keys());
 
-    // Ordenação “numérica” por código (1.1.10 > 1.1.2 etc)
     const parseCode = (s) =>
       String(s)
         .split('.')
@@ -441,7 +427,6 @@ function renderDescritivasTable(apiData) {
       return String(a).localeCompare(String(b));
     });
 
-    // Ordem/labels das estatísticas (linhas)
     const stats = [
       { label: 'Min', keys: ['Min', 'min', 'MIN'] },
       { label: '1º Q.', keys: ['Q1', 'q1', '1st Qu.', '1st Qu', '1st_qu', '1st_qu.'] },
@@ -529,9 +514,6 @@ function renderDescritivasTable(apiData) {
     );
   }
 
-  // -----------------------------
-  // Default: tabela “normal” (como já era)
-  // -----------------------------
   const keys = Object.keys(rows[0] || {});
   const preferredOrder = [
     'Estatística',
@@ -639,21 +621,21 @@ function pickCampusRow(objLike) {
 export default function DiscenteDashboardClient({ initialData, filtersOptions }) {
   const [activeTab, setActiveTab] = useState('dimensoes');
   const [selectedFilters, setSelectedFilters] = useState({
+    ano: '',
     campus: 'todos',
     curso: 'todos',
   });
 
-  const [summaryData, setSummaryData] = useState(initialData.summary);
+  const [summaryData, setSummaryData] = useState(initialData?.summary ?? null);
   const [dashboardData, setDashboardData] = useState(() => ({
-    proporcoes: initialData.proporcoes,
-    boxplot: initialData.boxplot,
-    atividades: initialData.atividades,
-    medias: initialData.medias,
-
-    docDimMedias: initialData.docDimMedias ?? null,
-    docDimProporcoes: initialData.docDimProporcoes ?? null,
-    turmaDimBoxplot: initialData.turmaDimBoxplot ?? null,
-    turmaDimDescritivas: initialData.turmaDimDescritivas ?? null,
+    proporcoes: initialData?.proporcoes ?? null,
+    boxplot: initialData?.boxplot ?? null,
+    atividades: initialData?.atividades ?? null,
+    medias: initialData?.medias ?? null,
+    docDimMedias: initialData?.docDimMedias ?? null,
+    docDimProporcoes: initialData?.docDimProporcoes ?? null,
+    turmaDimBoxplot: initialData?.turmaDimBoxplot ?? null,
+    turmaDimDescritivas: initialData?.turmaDimDescritivas ?? null,
   }));
 
   const [detailData, setDetailData] = useState(() => emptyDetailData());
@@ -663,15 +645,34 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
   const [tabLoading, setTabLoading] = useState({});
   const [loadedTabs, setLoadedTabs] = useState({ dimensoes: true });
 
+  const hasSelectedYear = Boolean(selectedFilters.ano);
+
   const params = useMemo(
     () => new URLSearchParams(selectedFilters).toString(),
     [selectedFilters]
   );
 
-  // ===========================
-  // CARGA GLOBAL (DIMENSÕES)
-  // ===========================
   useEffect(() => {
+    if (!hasSelectedYear) {
+      setIsLoading(false);
+      setError(null);
+      setSummaryData(null);
+      setDashboardData({
+        proporcoes: null,
+        boxplot: null,
+        atividades: null,
+        medias: null,
+        docDimMedias: null,
+        docDimProporcoes: null,
+        turmaDimBoxplot: null,
+        turmaDimDescritivas: null,
+      });
+      setDetailData(emptyDetailData());
+      setLoadedTabs({ dimensoes: true });
+      setTabLoading({});
+      return;
+    }
+
     const controller = new AbortController();
     let cancelled = false;
 
@@ -786,12 +787,11 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
       cancelled = true;
       controller.abort();
     };
-  }, [params]);
+  }, [params, hasSelectedYear]);
 
-  // ===========================
-  // CARGA POR ABA (LAZY)
-  // ===========================
   useEffect(() => {
+    if (!hasSelectedYear) return;
+
     const controller = new AbortController();
     let cancelled = false;
 
@@ -819,17 +819,12 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
             propItens,
             medItens,
             boxItens,
-
-            // ✅ NOVO: Ação Docente (subdimensões) - discente (Figura 8/6/10)
             acPropSub,
             acMedSub,
             acBoxSub,
-
-            // (mantido) docente: autoavaliação da ação docente
             adProp,
             adMed,
             adBox,
-
             atiProp,
             atiMed,
             atiBox,
@@ -856,7 +851,6 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
               'Falha (Autoavaliação boxplot)'
             ),
 
-            // ✅ Figura 8 / Figura 6 / Figura 10 (discente)
             pFetch(
               make(`/discente/acaodocente/subdimensoes/proporcoes?${params}`),
               'Falha (Ação Docente subdim proporções)'
@@ -867,9 +861,8 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
             ),
             pFetchOpt(
               make(`/discente/acaodocente/subdimensoes/boxplot?${params}`)
-            ), // optional
+            ),
 
-            // docente (mantido)
             pFetch(
               make(`/docente/autoavaliacao/subdimensoes/proporcoes?${params}`),
               'Falha (Ação Docente docente proporções)'
@@ -941,17 +934,12 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
           setDetailData((prev) => ({
             ...prev,
             autoavaliacao: { propItens, medItens, boxItens },
-
-            // ✅ NOVO: discente ação docente subdim (Figura 8/6/10)
             acao_docente_discente: {
               propSub: acPropSub,
               medSub: acMedSub,
               boxSub: acBoxSub,
             },
-
-            // docente (mantido)
             autoavaliacao_docente: { propSub: adProp, medSub: adMed, boxSub: adBox },
-
             atitude: {
               ...prev.atitude,
               discProp: atiProp,
@@ -1119,7 +1107,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
       cancelled = true;
       controller.abort();
     };
-  }, [activeTab, params, loadedTabs]);
+  }, [activeTab, params, loadedTabs, hasSelectedYear]);
 
   const datasets = useMemo(
     () => ({
@@ -1137,32 +1125,26 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     setSelectedFilters((prev) => ({ ...prev, [name]: value }));
   };
 
-// ✅ TABS OK (ORDEM + RENOMEAÇÃO)
-const tabs = useMemo(
-  () => [
-    { key: 'dimensoes', label: 'Dimensões Gerais' },
-    { key: 'autoavaliacao', label: 'Autoavaliação Discente' },
-
-    // ✅ antes: "Base Docente"
-    { key: 'base_docente', label: 'Avaliação da Ação Docente' },
-
-    { key: 'instalacoes', label: 'Instalações Físicas' },
-    { key: 'atividades', label: 'Atividades Acadêmicas' },
-  ],
-  []
-);
+  const tabs = useMemo(
+    () => [
+      { key: 'dimensoes', label: 'Dimensões Gerais' },
+      { key: 'autoavaliacao', label: 'Autoavaliação Discente' },
+      { key: 'base_docente', label: 'Avaliação da Ação Docente' },
+      { key: 'instalacoes', label: 'Instalações Físicas' },
+      { key: 'atividades', label: 'Atividades Acadêmicas' },
+    ],
+    []
+  );
 
   const isGlobalLoading = isLoading;
   const isTabLoading = !!tabLoading[activeTab];
 
   const dd = detailData;
 
-  // Autoavaliação + subdim docente (ação docente)
   const itensAutoProp = dd.autoavaliacao?.propItens;
   const itensAutoMed = dd.autoavaliacao?.medItens;
   const itensAutoBox = dd.autoavaliacao?.boxItens;
 
-  // ✅ NOVO: Figura 8/6/10 (discente ação docente subdim)
   const acaoDocSubPropDisc = dd.acao_docente_discente?.propSub;
   const acaoDocSubMedDisc = dd.acao_docente_discente?.medSub;
   const acaoDocSubBoxDisc = dd.acao_docente_discente?.boxSub;
@@ -1171,7 +1153,6 @@ const tabs = useMemo(
   const docenteMed = dd.autoavaliacao_docente?.medSub;
   const docenteBox = dd.autoavaliacao_docente?.boxSub;
 
-  // Discente (autoavaliacao tab)
   const itensAtitudePropDisc = dd.atitude?.discProp;
   const itensAtitudeMedDisc = dd.atitude?.discMed;
   const itensAtitudeBoxDisc = dd.atitude?.discBox;
@@ -1188,10 +1169,8 @@ const tabs = useMemo(
   const itensInstalacoesProp = dd.instalacoes?.propItens;
   const itensInstalacoesBoxDisc = dd.instalacoes?.boxDisc;
 
-  // Atividades
   const atividadesDoc = dd.atividades?.doc;
 
-  // Base docente
   const docTurmaMed = dd.base_docente?.turmaMed;
   const docTurmaProp = dd.base_docente?.turmaProp;
   const docSubMed = dd.base_docente?.subMed;
@@ -1243,15 +1222,21 @@ const tabs = useMemo(
             <div className={styles.statsGrid}>
               <StatCard
                 title="Total de Respondentes"
-                value={v0(summaryData?.total_respondentes) ?? '...'}
+                value={
+                  hasSelectedYear
+                    ? v0(summaryData?.total_respondentes) ?? '...'
+                    : 'N/D'
+                }
                 icon={<Users />}
               />
 
               <StatCard
                 title="Campus Melhor Avaliado"
-                value={bestCampus?.campus ?? 'N/D'}
+                value={hasSelectedYear ? bestCampus?.campus ?? 'N/D' : 'N/D'}
                 subtitle={`Média: ${
-                  bestCampus?.media !== null && bestCampus?.media !== undefined
+                  hasSelectedYear &&
+                  bestCampus?.media !== null &&
+                  bestCampus?.media !== undefined
                     ? Number(bestCampus.media).toFixed(2)
                     : 'N/D'
                 }`}
@@ -1260,9 +1245,11 @@ const tabs = useMemo(
 
               <StatCard
                 title="Campus Pior Avaliado"
-                value={worstCampus?.campus ?? 'N/D'}
+                value={hasSelectedYear ? worstCampus?.campus ?? 'N/D' : 'N/D'}
                 subtitle={`Média: ${
-                  worstCampus?.media !== null && worstCampus?.media !== undefined
+                  hasSelectedYear &&
+                  worstCampus?.media !== null &&
+                  worstCampus?.media !== undefined
                     ? Number(worstCampus.media).toFixed(2)
                     : 'N/D'
                 }`}
@@ -1278,141 +1265,152 @@ const tabs = useMemo(
               />
             </div>
 
-            <div>
-              <div className={styles.tabsContainer}>
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    className={activeTab === tab.key ? styles.activeTab : styles.tab}
-                    onClick={() => setActiveTab(tab.key)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
+            {!hasSelectedYear ? (
               <div
                 className={styles.chartDisplayArea}
                 style={{
-                  position: 'relative',
                   minHeight: '300px',
-                  overflow: 'visible',
-                  height: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  padding: '2rem',
                 }}
               >
-                {isTabLoading && <LoadingOverlay />}
-
-                {/* ✅ 1) Dimensões Gerais */}
-                {activeTab === 'dimensoes' && (
-                  <DimensoesGeraisTab
-                    datasets={datasets}
-                    dashboardData={dashboardData}
-                    styles={styles}
-                    disableZoomOptions={disableZoomOptions}
-                    twoDecTooltip={twoDecTooltip}
-                    renderDescritivasTable={renderDescritivasTable}
-                  />
-                )}
-
-                {/* ✅ 2) Autoavaliação Discente */}
-                {activeTab === 'autoavaliacao' && (
-                  <AutoavaliacaoTab
-                    styles={styles}
-                    disableZoomOptions={disableZoomOptions}
-                    twoDecTooltip={twoDecTooltip}
-                    xTicksNoRot={xTicksNoRot}
-                    renderDescritivasTable={renderDescritivasTable}
-                    formatMediasSubdimChartData={formatMediasSubdimChartData}
-                    formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
-                    formatMediasItensChartData={formatMediasItensChartData}
-                    formatProporcoesItensChartData={formatProporcoesItensChartData}
-                    // ✅ Figura 8/6/10 (discente - ação docente subdim)
-                    acaoDocSubMedDisc={acaoDocSubMedDisc}
-                    acaoDocSubPropDisc={acaoDocSubPropDisc}
-                    acaoDocSubBoxDisc={acaoDocSubBoxDisc}
-                    // (mantido) docente
-                    docenteMed={docenteMed}
-                    docenteProp={docenteProp}
-                    docenteBox={docenteBox}
-                    itensAutoMed={itensAutoMed}
-                    itensAutoProp={itensAutoProp}
-                    itensAutoBox={itensAutoBox}
-                    itensAtitudeMedDisc={itensAtitudeMedDisc}
-                    itensAtitudePropDisc={itensAtitudePropDisc}
-                    itensAtitudeBoxDisc={itensAtitudeBoxDisc}
-                    itensGestaoMedDisc={itensGestaoMedDisc}
-                    itensGestaoPropDisc={itensGestaoPropDisc}
-                    itensGestaoBoxDisc={itensGestaoBoxDisc}
-                    procDiscMed={procDiscMed}
-                    procDiscProp={procDiscProp}
-                    procDiscBox={procDiscBox}
-                    itensInstalacoesMed={itensInstalacoesMed}
-                    itensInstalacoesProp={itensInstalacoesProp}
-                    itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
-                  />
-                )}
-
-                {/* ✅ 3) Atividades Acadêmicas */}
-                {activeTab === 'atividades' && (
-                  <AtividadesAcademicasTab
-                    styles={styles}
-                    disableZoomOptions={disableZoomOptions}
-                    twoDecTooltip={twoDecTooltip}
-                    xTicksNoRot={xTicksNoRot}
-                    discenteChartData={datasets.atividades}
-                    atividadesDoc={atividadesDoc}
-                    formatAtividadesChartData={formatAtividadesChartData}
-                  />
-                )}
-
-                {/* ✅ 4) Base Docente */}
-                {activeTab === 'base_docente' && (
-                  <BaseDocenteTab
-                    styles={styles}
-                    disableZoomOptions={disableZoomOptions}
-                    twoDecTooltip={twoDecTooltip}
-                    xTicksNoRot={xTicksNoRot}
-                    formatMediasSubdimChartData={formatMediasSubdimChartData}
-                    formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
-                    formatMediasItensChartData={formatMediasItensChartData}
-                    formatProporcoesItensChartData={formatProporcoesItensChartData}
-                    normalizeAtitudeDocenteChartData={normalizeAtitudeDocenteChartData}
-                    formatMediasDimDocente={formatMediasDimDocente}
-                    formatProporcoesDimDocente={formatProporcoesDimDocente}
-                    docSubMed={docSubMed}
-                    docSubProp={docSubProp}
-                    docTurmaMed={docTurmaMed}
-                    docTurmaProp={docTurmaProp}
-                    itensAtitudeMedDoc={itensAtitudeMedDoc}
-                    itensAtitudePropDoc={itensAtitudePropDoc}
-                    itensGestaoMedDoc={itensGestaoMedDoc}
-                    itensGestaoPropDoc={itensGestaoPropDoc}
-                    procDocMed={procDocMed}
-                    procDocProp={procDocProp}
-                    itensInstalacoesMedDoc={itensInstalacoesMedDoc}
-                    itensInstalacoesPropDoc={itensInstalacoesPropDoc}
-                    docDimMed={docDimMed}
-                    docDimProp={docDimProp}
-                  />
-                )}
-
-                {/* ✅ 5) Instalações Físicas */}
-                {activeTab === 'instalacoes' && (
-                  <InstalacoesFisicasTab
-                    styles={styles}
-                    disableZoomOptions={disableZoomOptions}
-                    twoDecTooltip={twoDecTooltip}
-                    formatProporcoesItensChartData={formatProporcoesItensChartData}
-                    formatMediasItensChartData={formatMediasItensChartData}
-                    itensInstalacoesProp={itensInstalacoesProp}
-                    itensInstalacoesPropDoc={itensInstalacoesPropDoc}
-                    itensInstalacoesMed={itensInstalacoesMed}
-                    itensInstalacoesMedDoc={itensInstalacoesMedDoc}
-                    itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
-                  />
-                )}
+                <p style={{ fontSize: '1rem', color: '#666' }}>
+                  Selecione um ano para visualizar os dados.
+                </p>
               </div>
-            </div>
+            ) : (
+              <div>
+                <div className={styles.tabsContainer}>
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      className={activeTab === tab.key ? styles.activeTab : styles.tab}
+                      onClick={() => setActiveTab(tab.key)}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  className={styles.chartDisplayArea}
+                  style={{
+                    position: 'relative',
+                    minHeight: '300px',
+                    overflow: 'visible',
+                    height: 'auto',
+                  }}
+                >
+                  {isTabLoading && <LoadingOverlay />}
+
+                  {activeTab === 'dimensoes' && (
+                    <DimensoesGeraisTab
+                      datasets={datasets}
+                      dashboardData={dashboardData}
+                      styles={styles}
+                      disableZoomOptions={disableZoomOptions}
+                      twoDecTooltip={twoDecTooltip}
+                      renderDescritivasTable={renderDescritivasTable}
+                    />
+                  )}
+
+                  {activeTab === 'autoavaliacao' && (
+                    <AutoavaliacaoTab
+                      styles={styles}
+                      disableZoomOptions={disableZoomOptions}
+                      twoDecTooltip={twoDecTooltip}
+                      xTicksNoRot={xTicksNoRot}
+                      renderDescritivasTable={renderDescritivasTable}
+                      formatMediasSubdimChartData={formatMediasSubdimChartData}
+                      formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
+                      formatMediasItensChartData={formatMediasItensChartData}
+                      formatProporcoesItensChartData={formatProporcoesItensChartData}
+                      acaoDocSubMedDisc={acaoDocSubMedDisc}
+                      acaoDocSubPropDisc={acaoDocSubPropDisc}
+                      acaoDocSubBoxDisc={acaoDocSubBoxDisc}
+                      docenteMed={docenteMed}
+                      docenteProp={docenteProp}
+                      docenteBox={docenteBox}
+                      itensAutoMed={itensAutoMed}
+                      itensAutoProp={itensAutoProp}
+                      itensAutoBox={itensAutoBox}
+                      itensAtitudeMedDisc={itensAtitudeMedDisc}
+                      itensAtitudePropDisc={itensAtitudePropDisc}
+                      itensAtitudeBoxDisc={itensAtitudeBoxDisc}
+                      itensGestaoMedDisc={itensGestaoMedDisc}
+                      itensGestaoPropDisc={itensGestaoPropDisc}
+                      itensGestaoBoxDisc={itensGestaoBoxDisc}
+                      procDiscMed={procDiscMed}
+                      procDiscProp={procDiscProp}
+                      procDiscBox={procDiscBox}
+                      itensInstalacoesMed={itensInstalacoesMed}
+                      itensInstalacoesProp={itensInstalacoesProp}
+                      itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
+                    />
+                  )}
+
+                  {activeTab === 'atividades' && (
+                    <AtividadesAcademicasTab
+                      styles={styles}
+                      disableZoomOptions={disableZoomOptions}
+                      twoDecTooltip={twoDecTooltip}
+                      xTicksNoRot={xTicksNoRot}
+                      discenteChartData={datasets.atividades}
+                      atividadesDoc={atividadesDoc}
+                      formatAtividadesChartData={formatAtividadesChartData}
+                    />
+                  )}
+
+                  {activeTab === 'base_docente' && (
+                    <BaseDocenteTab
+                      styles={styles}
+                      disableZoomOptions={disableZoomOptions}
+                      twoDecTooltip={twoDecTooltip}
+                      xTicksNoRot={xTicksNoRot}
+                      formatMediasSubdimChartData={formatMediasSubdimChartData}
+                      formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
+                      formatMediasItensChartData={formatMediasItensChartData}
+                      formatProporcoesItensChartData={formatProporcoesItensChartData}
+                      normalizeAtitudeDocenteChartData={normalizeAtitudeDocenteChartData}
+                      formatMediasDimDocente={formatMediasDimDocente}
+                      formatProporcoesDimDocente={formatProporcoesDimDocente}
+                      docSubMed={docSubMed}
+                      docSubProp={docSubProp}
+                      docTurmaMed={docTurmaMed}
+                      docTurmaProp={docTurmaProp}
+                      itensAtitudeMedDoc={itensAtitudeMedDoc}
+                      itensAtitudePropDoc={itensAtitudePropDoc}
+                      itensGestaoMedDoc={itensGestaoMedDoc}
+                      itensGestaoPropDoc={itensGestaoPropDoc}
+                      procDocMed={procDocMed}
+                      procDocProp={procDocProp}
+                      itensInstalacoesMedDoc={itensInstalacoesMedDoc}
+                      itensInstalacoesPropDoc={itensInstalacoesPropDoc}
+                      docDimMed={docDimMed}
+                      docDimProp={docDimProp}
+                    />
+                  )}
+
+                  {activeTab === 'instalacoes' && (
+                    <InstalacoesFisicasTab
+                      styles={styles}
+                      disableZoomOptions={disableZoomOptions}
+                      twoDecTooltip={twoDecTooltip}
+                      formatProporcoesItensChartData={formatProporcoesItensChartData}
+                      formatMediasItensChartData={formatMediasItensChartData}
+                      itensInstalacoesProp={itensInstalacoesProp}
+                      itensInstalacoesPropDoc={itensInstalacoesPropDoc}
+                      itensInstalacoesMed={itensInstalacoesMed}
+                      itensInstalacoesMedDoc={itensInstalacoesMedDoc}
+                      itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

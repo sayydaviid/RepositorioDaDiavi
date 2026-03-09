@@ -6,7 +6,7 @@ import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function DiscenteFilters({ filters, selectedFilters, onFilterChange }) {
   const [isOpen, setIsOpen] = useState(false);
-  const { campus, cursos } = filters;
+  const { campus, cursos, anos } = filters;
 
   return (
     <div className={styles.filtersWrapper}>
@@ -20,7 +20,6 @@ export default function DiscenteFilters({ filters, selectedFilters, onFilterChan
       </button>
 
       <div className={`${styles.filtersContent} ${isOpen ? styles.open : ''}`}>
-        {/* Filtro de Campus */}
         <select
           name="campus"
           value={selectedFilters.campus}
@@ -29,11 +28,12 @@ export default function DiscenteFilters({ filters, selectedFilters, onFilterChan
         >
           <option value="todos">Todos os Campi</option>
           {campus?.map((c, i) => (
-            <option key={`${c}-${i}`} value={c}>{c}</option>
+            <option key={`${c}-${i}`} value={c}>
+              {c}
+            </option>
           ))}
         </select>
 
-        {/* Filtro de Curso */}
         <select
           name="curso"
           value={selectedFilters.curso}
@@ -42,7 +42,25 @@ export default function DiscenteFilters({ filters, selectedFilters, onFilterChan
         >
           <option value="todos">Todos os Cursos</option>
           {cursos?.map((c, i) => (
-            <option key={`${c}-${i}`} value={c}>{c}</option>
+            <option key={`${c}-${i}`} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+
+        <select
+          name="ano"
+          value={selectedFilters.ano}
+          onChange={onFilterChange}
+          className={styles.filterSelect}
+        >
+          <option value="" disabled hidden>
+            Escolha um ano
+          </option>
+          {anos?.map((a, i) => (
+            <option key={`${a}-${i}`} value={a}>
+              {a}
+            </option>
           ))}
         </select>
       </div>
