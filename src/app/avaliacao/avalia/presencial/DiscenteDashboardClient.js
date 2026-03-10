@@ -17,6 +17,37 @@ import InstalacoesFisicasTab from './instalacoes_fisicas/InstalacoesFisicasTab';
 // ======================================================
 // HELPER DE URL PARA O CACHE LOCAL
 // ======================================================
+useEffect(() => {
+  const controller = new AbortController();
+
+  const loadInitialFilters = async () => {
+    try {
+      const res = await fetch(make('/filters'), {
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error('Falha ao carregar filtros iniciais');
+      }
+
+      const data = await res.json();
+
+      setDynamicFilters({
+        anos: data?.anos ?? [],
+        campus: [],
+        cursos: [],
+      });
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      setError(err?.message ?? 'Erro ao carregar filtros iniciais');
+    }
+  };
+
+  loadInitialFilters();
+
+  return () => controller.abort();
+}, []);
+
 function normalizeFilterValue(value, fallback = 'todos') {
   if (value === null || value === undefined) return fallback;
   const s = String(value).trim();
