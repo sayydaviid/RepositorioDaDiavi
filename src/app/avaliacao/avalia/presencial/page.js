@@ -3,22 +3,46 @@ import DiscenteDashboardClient from './DiscenteDashboardClient';
 
 export const dynamic = 'force-dynamic';
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || 'https://sayydaviid-avalia-backend.hf.space';
+function buildCacheUrl(baseUrl, endpoint, filters = {}) {
+  const qs = new URLSearchParams();
+  qs.set('endpoint', endpoint);
+
+  if (filters?.ano) qs.set('ano', String(filters.ano).trim());
+  if (filters?.campus) qs.set('campus', String(filters.campus).trim());
+  if (filters?.curso) qs.set('curso', String(filters.curso).trim());
+
+  return `${baseUrl}/api/dashboard-cache?${qs.toString()}`;
+}
+
+function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  return 'http://localhost:3000';
+}
 
 async function getInitialData() {
   try {
-    // Agora buscamos só os filtros iniciais.
-    // A API devolve os anos disponíveis mesmo sem informar "ano".
-    const filtersRes = await fetch(`${API_BASE}/filters`, { cache: 'no-store' });
+    const baseUrl = getBaseUrl();
+
+    const filtersRes = await fetch(buildCacheUrl(baseUrl, '/filters'), {
+      cache: 'no-store',
+    });
 
     if (!filtersRes.ok) {
       throw new Error(
-        `Falha ao buscar filtros da API R: ${filtersRes.statusText} em ${filtersRes.url}`
+        `Falha ao buscar filtros do cache local: ${filtersRes.status} ${filtersRes.statusText}`
       );
     }
 
     const filtersData = await filtersRes.json();
+
+    console.log('filtersData:', filtersData);
 
     return {
       summaryData: null,
@@ -33,7 +57,7 @@ async function getInitialData() {
       },
     };
   } catch (error) {
-    console.error('Erro ao conectar com a API R:', error.message);
+    console.error('Erro ao carregar filtros iniciais:', error.message);
 
     return {
       summaryData: null,
@@ -63,11 +87,12 @@ export default async function DiscentePage() {
   if (!filtersOptions || !Array.isArray(filtersOptions.anos)) {
     return (
       <div>
-        <Header title="Visão Geral do Avalia Presencial " date="17 de setembro de 2025" />
+        <Header
+          title="Visão Geral do Avalia Presencial"
+          date="17 de setembro de 2025"
+        />
         <p style={{ color: 'red', textAlign: 'center', padding: '20px' }}>
           Não foi possível carregar os filtros essenciais.
-          <br />
-          Tentativa de conexão com: <strong>{API_BASE}</strong>
         </p>
       </div>
     );
@@ -75,7 +100,10 @@ export default async function DiscentePage() {
 
   return (
     <div>
-      <Header title="Visão Geral da Avaliação Discente" date="17 de setembro de 2025" />
+      <Header
+        title="Visão Geral da Avaliação Discente"
+        date="17 de setembro de 2025"
+      />
       <DiscenteDashboardClient
         initialData={{
           summary: summaryData,

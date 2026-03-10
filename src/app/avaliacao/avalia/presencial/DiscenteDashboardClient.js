@@ -14,10 +14,40 @@ import AtividadesAcademicasTab from './atividades_academicas/AtividadesAcademica
 import BaseDocenteTab from './base_docente/BaseDocenteTab';
 import InstalacoesFisicasTab from './instalacoes_fisicas/InstalacoesFisicasTab';
 
-const API_BASE =
-  (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE) || '';
+// ======================================================
+// HELPER DE URL PARA O CACHE LOCAL
+// ======================================================
+function normalizeFilterValue(value, fallback = 'todos') {
+  if (value === null || value === undefined) return fallback;
+  const s = String(value).trim();
+  if (!s) return fallback;
 
-const make = (path) => (API_BASE ? `${API_BASE}${path}` : `/backend${path}`);
+  const lower = s.toLowerCase();
+  if (
+    ['all', 'todos', 'todas', 'todo', 'qualquer', 'none', 'null', 'undefined'].includes(
+      lower
+    )
+  ) {
+    return 'todos';
+  }
+
+  return s;
+}
+
+const make = (endpoint, filters = {}) => {
+  const qs = new URLSearchParams();
+  qs.set('endpoint', endpoint);
+
+  if (filters?.ano) qs.set('ano', String(filters.ano).trim());
+
+  // /filters sem ano não precisa de campus/curso
+  if (endpoint !== '/filters') {
+    qs.set('campus', normalizeFilterValue(filters?.campus, 'todos'));
+    qs.set('curso', normalizeFilterValue(filters?.curso, 'todos'));
+  }
+
+  return `/api/dashboard-cache?${qs.toString()}`;
+};
 
 // ======================================================
 // LIMITADOR GLOBAL DE CONCORRÊNCIA (2–3 simultâneos)
@@ -653,11 +683,6 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
   const hasSelectedYear = Boolean(selectedFilters.ano);
 
-  const params = useMemo(
-    () => new URLSearchParams(selectedFilters).toString(),
-    [selectedFilters]
-  );
-
   useEffect(() => {
     if (!selectedFilters.ano) {
       setDynamicFilters({
@@ -673,7 +698,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     const loadYearFilters = async () => {
       try {
         const res = await fetch(
-          make(`/filters?ano=${encodeURIComponent(selectedFilters.ano)}`),
+          make('/filters', { ano: selectedFilters.ano }),
           { signal: controller.signal }
         );
 
@@ -739,20 +764,22 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
       setError(null);
 
       try {
-        const urlSummary = make(`/discente/geral/summary?${params}`);
-        const urlDiscMed = make(`/discente/dimensoes/medias?${params}`);
-        const urlDiscProp = make(`/discente/dimensoes/proporcoes?${params}`);
-        const urlDiscBox = make(`/discente/dimensoes/boxplot?${params}`);
-        const urlDiscAtiv = make(`/discente/atividades/percentual?${params}`);
+        const urlSummary = make('/discente/geral/summary', selectedFilters);
+        const urlDiscMed = make('/discente/dimensoes/medias', selectedFilters);
+        const urlDiscProp = make('/discente/dimensoes/proporcoes', selectedFilters);
+        const urlDiscBox = make('/discente/dimensoes/boxplot', selectedFilters);
+        const urlDiscAtiv = make('/discente/atividades/percentual', selectedFilters);
 
-        const urlDocDimMed = make(`/docente/dimensoes/medias?${params}`);
-        const urlDocDimProp = make(`/docente/dimensoes/proporcoes?${params}`);
+        const urlDocDimMed = make('/docente/dimensoes/medias', selectedFilters);
+        const urlDocDimProp = make('/docente/dimensoes/proporcoes', selectedFilters);
 
         const urlTurmaDimBoxNew = make(
-          `/docente/avaliacaoturma/dimensoes/boxplot?${params}`
+          '/docente/avaliacaoturma/dimensoes/boxplot',
+          selectedFilters
         );
         const urlTurmaDimDescNew = make(
-          `/docente/avaliacaoturma/dimensoes/descritivas?${params}`
+          '/docente/avaliacaoturma/dimensoes/descritivas',
+          selectedFilters
         );
 
         const [summary, medias, proporcoes, boxplot, atividades] =
@@ -772,7 +799,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
         let turmaDimBoxplot = await pFetchOpt(urlTurmaDimBoxNew);
         if (!turmaDimBoxplot) {
           turmaDimBoxplot = await pFetchOpt(
-            make(`/docente/dimensoes/boxplot?${params}`)
+            make('/docente/dimensoes/boxplot', selectedFilters)
           );
         }
 
@@ -793,13 +820,13 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
         if (!turmaDimDescritivas) {
           turmaDimDescritivas = await pFetchOpt(
-            make(`/docente/avaliacaoturma/dimensoes/estatisticas?${params}`)
+            make('/docente/avaliacaoturma/dimensoes/estatisticas', selectedFilters)
           );
         }
 
         if (!turmaDimDescritivas) {
           turmaDimDescritivas = await pFetchOpt(
-            make(`/docente/dimensoes/descritivas?${params}`)
+            make('/docente/dimensoes/descritivas', selectedFilters)
           );
         }
 
@@ -834,7 +861,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
       cancelled = true;
       controller.abort();
     };
-  }, [params, hasSelectedYear]);
+  }, [hasSelectedYear, selectedFilters]);
 
   useEffect(() => {
     if (!hasSelectedYear) return;
@@ -886,92 +913,92 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
             instBox,
           ] = await Promise.all([
             pFetch(
-              make(`/discente/autoavaliacao/itens/proporcoes?${params}`),
+              make('/discente/autoavaliacao/itens/proporcoes', selectedFilters),
               'Falha (Autoavaliação proporções)'
             ),
             pFetch(
-              make(`/discente/autoavaliacao/itens/medias?${params}`),
+              make('/discente/autoavaliacao/itens/medias', selectedFilters),
               'Falha (Autoavaliação médias)'
             ),
             pFetch(
-              make(`/discente/autoavaliacao/itens/boxplot?${params}`),
+              make('/discente/autoavaliacao/itens/boxplot', selectedFilters),
               'Falha (Autoavaliação boxplot)'
             ),
 
             pFetch(
-              make(`/discente/acaodocente/subdimensoes/proporcoes?${params}`),
+              make('/discente/acaodocente/subdimensoes/proporcoes', selectedFilters),
               'Falha (Ação Docente subdim proporções)'
             ),
             pFetch(
-              make(`/discente/acaodocente/subdimensoes/medias?${params}`),
+              make('/discente/acaodocente/subdimensoes/medias', selectedFilters),
               'Falha (Ação Docente subdim médias)'
             ),
             pFetchOpt(
-              make(`/discente/acaodocente/subdimensoes/boxplot?${params}`)
+              make('/discente/acaodocente/subdimensoes/boxplot', selectedFilters)
             ),
 
             pFetch(
-              make(`/docente/autoavaliacao/subdimensoes/proporcoes?${params}`),
+              make('/docente/autoavaliacao/subdimensoes/proporcoes', selectedFilters),
               'Falha (Ação Docente docente proporções)'
             ),
             pFetch(
-              make(`/docente/autoavaliacao/subdimensoes/medias?${params}`),
+              make('/docente/autoavaliacao/subdimensoes/medias', selectedFilters),
               'Falha (Ação Docente docente médias)'
             ),
             pFetch(
-              make(`/docente/autoavaliacao/subdimensoes/boxplot?${params}`),
+              make('/docente/autoavaliacao/subdimensoes/boxplot', selectedFilters),
               'Falha (Ação Docente docente boxplot)'
             ),
 
             pFetch(
-              make(`/discente/atitudeprofissional/itens/proporcoes?${params}`),
+              make('/discente/atitudeprofissional/itens/proporcoes', selectedFilters),
               'Falha (Atitude proporções)'
             ),
             pFetch(
-              make(`/discente/atitudeprofissional/itens/medias?${params}`),
+              make('/discente/atitudeprofissional/itens/medias', selectedFilters),
               'Falha (Atitude médias)'
             ),
             pFetch(
-              make(`/discente/atitudeprofissional/itens/boxplot?${params}`),
+              make('/discente/atitudeprofissional/itens/boxplot', selectedFilters),
               'Falha (Atitude boxplot)'
             ),
 
             pFetch(
-              make(`/discente/gestaodidatica/itens/proporcoes?${params}`),
+              make('/discente/gestaodidatica/itens/proporcoes', selectedFilters),
               'Falha (Gestão proporções)'
             ),
             pFetch(
-              make(`/discente/gestaodidatica/itens/medias?${params}`),
+              make('/discente/gestaodidatica/itens/medias', selectedFilters),
               'Falha (Gestão médias)'
             ),
             pFetch(
-              make(`/discente/gestaodidatica/itens/boxplot?${params}`),
+              make('/discente/gestaodidatica/itens/boxplot', selectedFilters),
               'Falha (Gestão boxplot)'
             ),
 
             pFetch(
-              make(`/discente/processoavaliativo/itens/proporcoes?${params}`),
+              make('/discente/processoavaliativo/itens/proporcoes', selectedFilters),
               'Falha (Processo proporções)'
             ),
             pFetch(
-              make(`/discente/processoavaliativo/itens/medias?${params}`),
+              make('/discente/processoavaliativo/itens/medias', selectedFilters),
               'Falha (Processo médias)'
             ),
             pFetch(
-              make(`/discente/processoavaliativo/itens/boxplot?${params}`),
+              make('/discente/processoavaliativo/itens/boxplot', selectedFilters),
               'Falha (Processo boxplot)'
             ),
 
             pFetch(
-              make(`/discente/instalacoes/itens/proporcoes?${params}`),
+              make('/discente/instalacoes/itens/proporcoes', selectedFilters),
               'Falha (Instalações proporções)'
             ),
             pFetch(
-              make(`/discente/instalacoes/itens/medias?${params}`),
+              make('/discente/instalacoes/itens/medias', selectedFilters),
               'Falha (Instalações médias)'
             ),
             pFetch(
-              make(`/discente/instalacoes/itens/boxplot?${params}`),
+              make('/discente/instalacoes/itens/boxplot', selectedFilters),
               'Falha (Instalações boxplot)'
             ),
           ]);
@@ -1030,60 +1057,63 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
             instPropDoc,
           ] = await Promise.all([
             pFetch(
-              make(`/docente/avaliacaoturma/itens/medias?${params}`),
+              make('/docente/avaliacaoturma/itens/medias', selectedFilters),
               'Falha (turma médias)'
             ),
             pFetch(
-              make(`/docente/avaliacaoturma/itens/proporcoes?${params}`),
+              make('/docente/avaliacaoturma/itens/proporcoes', selectedFilters),
               'Falha (turma proporções)'
             ),
             pFetch(
-              make(`/docente_base/autoavaliacao/subdimensoes/medias?${params}`),
+              make('/docente_base/autoavaliacao/subdimensoes/medias', selectedFilters),
               'Falha (subdim médias)'
             ),
             pFetch(
-              make(`/docente_base/autoavaliacao/subdimensoes/proporcoes?${params}`),
+              make('/docente_base/autoavaliacao/subdimensoes/proporcoes', selectedFilters),
               'Falha (subdim proporções)'
             ),
-            pFetch(make(`/docente/dimensoes/medias?${params}`), 'Falha (dim médias)'),
             pFetch(
-              make(`/docente/dimensoes/proporcoes?${params}`),
+              make('/docente/dimensoes/medias', selectedFilters),
+              'Falha (dim médias)'
+            ),
+            pFetch(
+              make('/docente/dimensoes/proporcoes', selectedFilters),
               'Falha (dim proporções)'
             ),
 
             pFetch(
-              make(`/docente/atitudeprofissional/itens/proporcoes?${params}`),
+              make('/docente/atitudeprofissional/itens/proporcoes', selectedFilters),
               'Falha (Atitude docente prop)'
             ),
             pFetch(
-              make(`/docente/atitudeprofissional/itens/medias?${params}`),
+              make('/docente/atitudeprofissional/itens/medias', selectedFilters),
               'Falha (Atitude docente med)'
             ),
 
             pFetch(
-              make(`/docente/gestaodidatica/itens/proporcoes?${params}`),
+              make('/docente/gestaodidatica/itens/proporcoes', selectedFilters),
               'Falha (Gestão docente prop)'
             ),
             pFetch(
-              make(`/docente/gestaodidatica/itens/medias?${params}`),
+              make('/docente/gestaodidatica/itens/medias', selectedFilters),
               'Falha (Gestão docente med)'
             ),
 
             pFetch(
-              make(`/docente/processoavaliativo/itens/proporcoes?${params}`),
+              make('/docente/processoavaliativo/itens/proporcoes', selectedFilters),
               'Falha (Processo docente prop)'
             ),
             pFetch(
-              make(`/docente/processoavaliativo/itens/medias?${params}`),
+              make('/docente/processoavaliativo/itens/medias', selectedFilters),
               'Falha (Processo docente med)'
             ),
 
             pFetch(
-              make(`/docente/instalacoes/itens/medias?${params}`),
+              make('/docente/instalacoes/itens/medias', selectedFilters),
               'Falha (Instalações docente med)'
             ),
             pFetch(
-              make(`/docente/instalacoes/itens/proporcoes?${params}`),
+              make('/docente/instalacoes/itens/proporcoes', selectedFilters),
               'Falha (Instalações docente prop)'
             ),
           ]);
@@ -1104,23 +1134,23 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
         } else if (tabKey === 'instalacoes') {
           const [medItens, propItens, boxDisc, medDoc, propDoc] = await Promise.all([
             pFetch(
-              make(`/discente/instalacoes/itens/medias?${params}`),
+              make('/discente/instalacoes/itens/medias', selectedFilters),
               'Falha ao buscar instalações (discente médias)'
             ),
             pFetch(
-              make(`/discente/instalacoes/itens/proporcoes?${params}`),
+              make('/discente/instalacoes/itens/proporcoes', selectedFilters),
               'Falha ao buscar instalações (discente proporções)'
             ),
             pFetch(
-              make(`/discente/instalacoes/itens/boxplot?${params}`),
+              make('/discente/instalacoes/itens/boxplot', selectedFilters),
               'Falha ao buscar instalações (discente boxplot)'
             ),
             pFetch(
-              make(`/docente/instalacoes/itens/medias?${params}`),
+              make('/docente/instalacoes/itens/medias', selectedFilters),
               'Falha ao buscar instalações (docente médias)'
             ),
             pFetch(
-              make(`/docente/instalacoes/itens/proporcoes?${params}`),
+              make('/docente/instalacoes/itens/proporcoes', selectedFilters),
               'Falha ao buscar instalações (docente proporções)'
             ),
           ]);
@@ -1132,7 +1162,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
           }));
         } else if (tabKey === 'atividades') {
           const doc = await pFetch(
-            make(`/docente/atividades/percentual?${params}`),
+            make('/docente/atividades/percentual', selectedFilters),
             'Falha ao buscar atividades do docente'
           );
           if (cancelled) return;
@@ -1154,7 +1184,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
       cancelled = true;
       controller.abort();
     };
-  }, [activeTab, params, loadedTabs, hasSelectedYear]);
+  }, [activeTab, hasSelectedYear, loadedTabs, selectedFilters]);
 
   const datasets = useMemo(
     () => ({
