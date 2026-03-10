@@ -17,37 +17,6 @@ import InstalacoesFisicasTab from './instalacoes_fisicas/InstalacoesFisicasTab';
 // ======================================================
 // HELPER DE URL PARA O CACHE LOCAL
 // ======================================================
-useEffect(() => {
-  const controller = new AbortController();
-
-  const loadInitialFilters = async () => {
-    try {
-      const res = await fetch(make('/filters'), {
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error('Falha ao carregar filtros iniciais');
-      }
-
-      const data = await res.json();
-
-      setDynamicFilters({
-        anos: data?.anos ?? [],
-        campus: [],
-        cursos: [],
-      });
-    } catch (err) {
-      if (err?.name === 'AbortError') return;
-      setError(err?.message ?? 'Erro ao carregar filtros iniciais');
-    }
-  };
-
-  loadInitialFilters();
-
-  return () => controller.abort();
-}, []);
-
 function normalizeFilterValue(value, fallback = 'todos') {
   if (value === null || value === undefined) return fallback;
   const s = String(value).trim();
@@ -431,12 +400,13 @@ function coerceRows(apiData) {
 
 function renderDescritivasTable(apiData) {
   const rows = coerceRows(apiData);
-  if (!rows.length)
+  if (!rows.length) {
     return (
       <p style={{ textAlign: 'center' }}>
         Estatísticas descritivas não disponíveis.
       </p>
     );
+  }
 
   const hasOwn = (obj, k) => Object.prototype.hasOwnProperty.call(obj, k);
 
@@ -714,13 +684,50 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
   const hasSelectedYear = Boolean(selectedFilters.ano);
 
+  // ======================================================
+  // CARREGA OS ANOS INICIAIS NO CLIENT
+  // ======================================================
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadInitialFilters = async () => {
+      try {
+        const res = await fetch(make('/filters'), {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error('Falha ao carregar filtros iniciais');
+        }
+
+        const data = await res.json();
+
+        setDynamicFilters({
+          anos: data?.anos ?? [],
+          campus: [],
+          cursos: [],
+        });
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+        setError(err?.message ?? 'Erro ao carregar filtros iniciais');
+      }
+    };
+
+    loadInitialFilters();
+
+    return () => controller.abort();
+  }, []);
+
+  // ======================================================
+  // QUANDO ESCOLHE ANO, CARREGA CAMPUS E CURSOS DESSE ANO
+  // ======================================================
   useEffect(() => {
     if (!selectedFilters.ano) {
-      setDynamicFilters({
-        anos: filtersOptions?.anos ?? [],
+      setDynamicFilters((prev) => ({
+        ...prev,
         campus: [],
         cursos: [],
-      });
+      }));
       return;
     }
 
@@ -739,11 +746,11 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
         const data = await res.json();
 
-        setDynamicFilters({
-          anos: data?.anos ?? filtersOptions?.anos ?? [],
+        setDynamicFilters((prev) => ({
+          anos: data?.anos ?? prev.anos ?? [],
           campus: data?.campus ?? [],
           cursos: data?.cursos ?? [],
-        });
+        }));
       } catch (err) {
         if (err?.name === 'AbortError') return;
         setError(err?.message ?? 'Erro ao carregar filtros');
@@ -753,7 +760,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     loadYearFilters();
 
     return () => controller.abort();
-  }, [selectedFilters.ano, filtersOptions]);
+  }, [selectedFilters.ano]);
 
   useEffect(() => {
     if (!hasSelectedYear) {
