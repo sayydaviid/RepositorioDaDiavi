@@ -41,8 +41,7 @@ async function getInitialData() {
     }
 
     const filtersData = await filtersRes.json();
-
-    console.log('filtersData:', filtersData);
+    console.log('filtersData page:', filtersData);
 
     return {
       summaryData: null,
@@ -84,24 +83,10 @@ export default async function DiscentePage() {
     filtersOptions,
   } = await getInitialData();
 
-  if (!filtersOptions || !Array.isArray(filtersOptions.anos)) {
-    return (
-      <div>
-        <Header
-          title="Visão Geral do Avalia Presencial"
-          date="17 de setembro de 2025"
-        />
-        <p style={{ color: 'red', textAlign: 'center', padding: '20px' }}>
-          Não foi possível carregar os filtros essenciais.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div>
       <Header
-        title="Visão Geral da Avaliação Discente"
+        title="Visão Geral do Avalia Presencial"
         date="17 de setembro de 2025"
       />
       <DiscenteDashboardClient
