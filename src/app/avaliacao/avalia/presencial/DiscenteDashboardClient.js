@@ -40,10 +40,12 @@ const make = (endpoint, filters = {}) => {
 
   if (filters?.ano) qs.set('ano', String(filters.ano).trim());
 
-  // /filters sem ano não precisa de campus/curso
   if (endpoint !== '/filters') {
     qs.set('campus', normalizeFilterValue(filters?.campus, 'todos'));
     qs.set('curso', normalizeFilterValue(filters?.curso, 'todos'));
+  } else {
+    if (filters?.campus) qs.set('campus', normalizeFilterValue(filters.campus, 'todos'));
+    if (filters?.curso) qs.set('curso', normalizeFilterValue(filters.curso, 'todos'));
   }
 
   return `/api/dashboard-cache?${qs.toString()}`;
@@ -226,8 +228,7 @@ function formatProporcoesItensChartData(apiData) {
     label: conceito,
     data: rawItems.map(
       (raw) =>
-        apiData.find((d) => d.item === raw && d.conceito === conceito)?.valor ||
-        0
+        apiData.find((d) => d.item === raw && d.conceito === conceito)?.valor || 0
     ),
     backgroundColor: colorMap[conceito],
   }));
@@ -684,9 +685,6 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
   const hasSelectedYear = Boolean(selectedFilters.ano);
 
-  // ======================================================
-  // CARREGA OS ANOS INICIAIS NO CLIENT
-  // ======================================================
   useEffect(() => {
     const controller = new AbortController();
 
@@ -718,9 +716,6 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     return () => controller.abort();
   }, []);
 
-  // ======================================================
-  // QUANDO ESCOLHE ANO, CARREGA CAMPUS E CURSOS DESSE ANO
-  // ======================================================
   useEffect(() => {
     if (!selectedFilters.ano) {
       setDynamicFilters((prev) => ({
@@ -736,7 +731,11 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     const loadYearFilters = async () => {
       try {
         const res = await fetch(
-          make('/filters', { ano: selectedFilters.ano }),
+          make('/filters', {
+            ano: selectedFilters.ano,
+            campus: selectedFilters.campus,
+            curso: selectedFilters.curso,
+          }),
           { signal: controller.signal }
         );
 
@@ -760,7 +759,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     loadYearFilters();
 
     return () => controller.abort();
-  }, [selectedFilters.ano]);
+  }, [selectedFilters.ano, selectedFilters.campus, selectedFilters.curso]);
 
   useEffect(() => {
     if (!hasSelectedYear) {
@@ -1241,10 +1240,24 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     setSelectedFilters((prev) => {
       if (name === 'ano') {
         return {
-          ...prev,
           ano: value,
           campus: 'todos',
           curso: 'todos',
+        };
+      }
+
+      if (name === 'campus') {
+        return {
+          ...prev,
+          campus: value,
+          curso: 'todos',
+        };
+      }
+
+      if (name === 'curso') {
+        return {
+          ...prev,
+          curso: value,
         };
       }
 
