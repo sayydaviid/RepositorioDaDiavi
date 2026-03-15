@@ -2,12 +2,14 @@
 
 import ActivityChart from '../../components/ActivityChart';
 import BoxplotChart from '../../components/BoxplotChart';
+import { QUESTION_MAPPING_AVALIA } from '../../lib/questionMappingAvalia';
 
 export default function AutoavaliacaoTab({
   // estilos / helpers
   styles,
   disableZoomOptions,
   twoDecTooltip,
+  twoDecTooltipWithQuestions,
   xTicksNoRot,
   renderDescritivasTable,
 
@@ -53,7 +55,12 @@ export default function AutoavaliacaoTab({
   itensInstalacoesMed,
   itensInstalacoesProp,
   itensInstalacoesBoxDisc,
+
+  dimensionFilter = '',
 }) {
+  const showDim1 = !dimensionFilter || dimensionFilter === '1';
+  const showDim2 = !dimensionFilter || dimensionFilter === '2';
+
   return (
     <div style={{ position: 'relative', overflow: 'visible' }}>
       <div
@@ -69,6 +76,8 @@ export default function AutoavaliacaoTab({
             ✅ AUTOAVALIAÇÃO DISCENTE (ordem igual ao R original)
             Figura 13 (Proporções) -> Figura 11 (Médias) -> Figura 15 (Boxplot)
            ============================================================ */}
+        {showDim2 && (
+          <>
         {/* Figura 6 */}
         <div className={styles.chartContainer} style={{ width: '100%', minHeight: '400px' }}>
           {acaoDocSubMedDisc ? (
@@ -77,7 +86,10 @@ export default function AutoavaliacaoTab({
               title="Médias por Subdimensão da Avaliação da Ação Docente"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.discente.autoavaliacao),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 4 } },
               }}
             />
@@ -94,7 +106,9 @@ export default function AutoavaliacaoTab({
               title="Proporções de respostas dadas por Subdimensão da Avaliação da Ação Docente"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.discente.autoavaliacao),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
               }}
             />
@@ -130,7 +144,11 @@ export default function AutoavaliacaoTab({
             <p>Boxplot e Estatísticas (Ação Docente por Subdimensão) não disponíveis.</p>
           </div>
         )}
+          </>
+        )}
 
+              {showDim1 && (
+                <>
                 {/* Figura 11 */}
         <div className={styles.chartContainer} style={{ width: '100%', minHeight: '400px' }}>
           {itensAutoMed ? (
@@ -139,7 +157,10 @@ export default function AutoavaliacaoTab({
               title="Médias dos itens relacionados à Autoavaliação Discente"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.discente.autoavaliacao),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 4 } },
               }}
             />
@@ -156,7 +177,9 @@ export default function AutoavaliacaoTab({
               title="Proporções de respostas dadas aos itens relacionados à Autoavaliação Discente"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.discente.autoavaliacao),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
               }}
             />
@@ -194,6 +217,8 @@ export default function AutoavaliacaoTab({
             <p>Boxplot e Estatísticas (Autoavaliação) não disponíveis.</p>
           </div>
         )}
+          </>
+        )}
 
         {/* ============================================================
             ✅ AÇÃO DOCENTE (SUBDIMENSÕES) - BASE DISCENTE
@@ -205,6 +230,8 @@ export default function AutoavaliacaoTab({
             (seu conteúdo original permanece)
            ============================================================ */}
 
+        {showDim2 && (
+          <>
         {/* === ATITUDE PROFISSIONAL DISCENTE === */}
         <div className={styles.chartContainer} style={{ width: '100%', minHeight: '400px' }}>
           {itensAtitudeMedDisc ? (
@@ -213,7 +240,10 @@ export default function AutoavaliacaoTab({
               title="Médias dos itens relacionados à Atitude Profissional (Discente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.discente.atitude),
+                },
                 scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
               }}
             />
@@ -229,7 +259,9 @@ export default function AutoavaliacaoTab({
               title="Proporções de respostas dadas aos itens relacionados à Atitude Profissional (Discente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.discente.atitude),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
               }}
             />
@@ -273,7 +305,10 @@ export default function AutoavaliacaoTab({
               title="Médias dos itens relacionados à Gestão Didática (Discente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.discente.gestao),
+                },
                 scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
               }}
             />
@@ -289,7 +324,9 @@ export default function AutoavaliacaoTab({
               title="Proporções de respostas dadas aos itens relacionados à Gestão Didática (Discente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.discente.gestao),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
               }}
             />
@@ -333,7 +370,10 @@ export default function AutoavaliacaoTab({
               title="Médias dos itens relacionados ao Processo Avaliativo (Discente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.discente.processo),
+                },
                 scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
               }}
             />
@@ -349,7 +389,9 @@ export default function AutoavaliacaoTab({
               title="Proporções de respostas dadas aos itens relacionados ao Processo Avaliativo (Discente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.discente.processo),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
               }}
             />
@@ -383,6 +425,8 @@ export default function AutoavaliacaoTab({
           <div className={styles.chartContainer} style={{ width: '100%', minHeight: '100px' }}>
             <p>Boxplot e Estatísticas (Processo Avaliativo) não disponíveis.</p>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

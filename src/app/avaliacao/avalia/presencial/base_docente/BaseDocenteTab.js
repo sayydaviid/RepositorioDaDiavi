@@ -1,12 +1,14 @@
 'use client';
 
 import ActivityChart from '../../components/ActivityChart';
+import { QUESTION_MAPPING_AVALIA } from '../../lib/questionMappingAvalia';
 
 export default function BaseDocenteTab({
   // ui
   styles,
   disableZoomOptions,
   twoDecTooltip,
+  twoDecTooltipWithQuestions,
   xTicksNoRot,
 
   // formatters
@@ -38,7 +40,12 @@ export default function BaseDocenteTab({
 
   docDimMed,
   docDimProp,
+
+  dimensionFilter = '',
 }) {
+  const showDim1 = !dimensionFilter || dimensionFilter === '1';
+  const showDim2 = !dimensionFilter || dimensionFilter === '2';
+
   return (
     <div style={{ position: 'relative', overflow: 'visible' }}>
       <div
@@ -50,6 +57,8 @@ export default function BaseDocenteTab({
           overflow: 'visible',
         }}
       >
+        {showDim2 && (
+          <>
         {/* === 1. Médias por Subdimensão da Autoavaliação da Ação Docente === */}
         <div className={styles.chartContainer} style={{ width: '100%', minHeight: '400px' }}>
           {docSubMed ? (
@@ -85,7 +94,11 @@ export default function BaseDocenteTab({
             <p>Proporções (Subdimensão - Base Docente) não disponíveis.</p>
           )}
         </div>
+            </>
+          )}
 
+          {showDim1 && (
+            <>
         {/* === 3. Médias dos itens relacionados à Avaliação da Turma === */}
         <div className={styles.chartContainer} style={{ width: '100%', minHeight: '400px' }}>
           {docTurmaMed ? (
@@ -94,7 +107,10 @@ export default function BaseDocenteTab({
               title="Médias dos itens relacionados à Avaliação da Turma"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.docente.avaliacaoTurma),
+                },
                 layout: { padding: { top: 8, right: 6, bottom: 0, left: 6 } },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 4 } },
               }}
@@ -112,6 +128,9 @@ export default function BaseDocenteTab({
               title="Proporções de respostas dadas aos itens relacionados à Avaliação da Turma"
               customOptions={{
                 ...disableZoomOptions,
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.docente.avaliacaoTurma),
+                },
                 layout: { padding: { top: 8, right: -12, bottom: 0, left: -30 } },
                 scales: { y: { max: 100 }, x: { ticks: xTicksNoRot } },
               }}
@@ -120,7 +139,11 @@ export default function BaseDocenteTab({
             <p>Proporções (Avaliação da Turma) não disponíveis.</p>
           )}
         </div>
+            </>
+          )}
 
+          {showDim2 && (
+            <>
         {/* === 5. Médias dos itens relacionados à Atitude Profissional (Docente) === */}
         <div className={styles.chartContainer} style={{ width: '100%', minHeight: '400px' }}>
           {itensAtitudeMedDoc ? (
@@ -131,7 +154,10 @@ export default function BaseDocenteTab({
               title="Médias dos itens relacionados à Atitude Profissional (Docente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.docente.atitude),
+                },
                 scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
               }}
             />
@@ -150,7 +176,9 @@ export default function BaseDocenteTab({
               title="Proporções de respostas dadas aos itens relacionados à Atitude Profissional (Docente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.docente.atitude),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
               }}
             />
@@ -167,7 +195,10 @@ export default function BaseDocenteTab({
               title="Médias dos itens relacionados à Gestão Didática (Docente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false }, tooltip: twoDecTooltip() },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.docente.gestao),
+                },
                 scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
               }}
             />
@@ -184,7 +215,9 @@ export default function BaseDocenteTab({
               title="Proporções de respostas dadas aos itens relacionados à Gestão Didática (Docente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.docente.gestao),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
               }}
             />
@@ -201,7 +234,10 @@ export default function BaseDocenteTab({
               title="Médias dos itens relacionados ao Processo Avaliativo (Docente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { legend: { display: false } },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.docente.processo),
+                },
                 scales: { y: { max: 4 }, x: { ticks: xTicksNoRot } },
               }}
             />
@@ -218,7 +254,9 @@ export default function BaseDocenteTab({
               title="Proporções de respostas dadas aos itens relacionados ao Processo Avaliativo (Docente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.docente.processo),
+                },
                 scales: { x: { ticks: xTicksNoRot }, y: { max: 100 } },
               }}
             />
@@ -226,6 +264,8 @@ export default function BaseDocenteTab({
             <p>Proporções (Processo Avaliativo) não disponíveis.</p>
           )}
         </div>
+            </>
+          )}
 
       </div>
     </div>

@@ -13,6 +13,7 @@ import AutoavaliacaoTab from './autoavaliacao_discente/AutoavaliacaoTab';
 import AtividadesAcademicasTab from './atividades_academicas/AtividadesAcademicasTab';
 import BaseDocenteTab from './base_docente/BaseDocenteTab';
 import InstalacoesFisicasTab from './instalacoes_fisicas/InstalacoesFisicasTab';
+import RankingParticipantesTab from './ranking_participantes/RankingParticipantesTab';
 
 // ======================================================
 // HELPER DE URL PARA O CACHE LOCAL
@@ -121,6 +122,80 @@ const twoDecTooltip = (suffix = '') => ({
   },
 });
 
+function normalizeQuestionCode(codeLike) {
+  const raw = String(codeLike ?? '').trim();
+  if (!raw) return null;
+
+  if (/^\d+\.\d+\.\d+$/.test(raw)) return raw;
+
+  const dottedTwoPart = raw.match(/^(\d+)\.(\d{2})$/);
+  if (dottedTwoPart) {
+    const [, a, bc] = dottedTwoPart;
+    return `${a}.${bc[0]}.${bc[1]}`;
+  }
+
+  const onlyDigits = raw.match(/^(\d{3,})$/);
+  if (onlyDigits) {
+    const s = onlyDigits[1];
+    if (s.length === 3) {
+      return `${s[0]}.${s[1]}.${s[2]}`;
+    }
+    return `${s.slice(0, -2)}.${s.slice(-2, -1)}.${s.slice(-1)}`;
+  }
+
+  return null;
+}
+
+function resolveQuestionFromLabel(rawLabel, questionMap) {
+  if (!questionMap) return null;
+
+  const labelText = String(rawLabel ?? '');
+  const directMatch = labelText.match(/\d+\.\d+\.\d+/)?.[0];
+  if (directMatch && questionMap?.[directMatch]) {
+    return questionMap[directMatch];
+  }
+
+  const twoPartMatch = labelText.match(/\d+\.\d{2}/)?.[0];
+  const normalizedTwoPart = normalizeQuestionCode(twoPartMatch);
+  if (normalizedTwoPart && questionMap?.[normalizedTwoPart]) {
+    return questionMap[normalizedTwoPart];
+  }
+
+  const compactMatch = labelText.match(/\b\d{3,}\b/)?.[0];
+  const normalizedCompact = normalizeQuestionCode(compactMatch);
+  if (normalizedCompact && questionMap?.[normalizedCompact]) {
+    return questionMap[normalizedCompact];
+  }
+
+  return null;
+}
+
+const twoDecTooltipWithQuestions = (suffix = '', questionMap = null) => ({
+  callbacks: {
+    label: (ctx) => {
+      const lbl = ctx.dataset?.label ? `${ctx.dataset.label}: ` : '';
+      const v =
+        typeof ctx.parsed === 'object'
+          ? ctx.parsed?.y ?? ctx.raw
+          : ctx.parsed ?? ctx.raw;
+      const num = Number(v);
+      const valueLine = `${lbl}${Number.isFinite(num) ? num.toFixed(2) : v}${suffix}`;
+
+      if (!questionMap) return valueLine;
+
+      const rawDataLabel = ctx?.chart?.data?.labels?.[ctx?.dataIndex];
+      const rawLabel = Array.isArray(rawDataLabel)
+        ? rawDataLabel.join(' ')
+        : String(rawDataLabel ?? ctx?.label ?? '');
+      const question = resolveQuestionFromLabel(rawLabel, questionMap);
+
+      if (!question) return valueLine;
+
+      return ` ${question}`;
+    },
+  },
+});
+
 function wrapLabel(label, maxWidth = 20) {
   if (typeof label !== 'string' || label.length <= maxWidth) return label;
   const words = label.split(' ');
@@ -140,19 +215,29 @@ function wrapLabel(label, maxWidth = 20) {
 
 function formatItemCodeLabel(val) {
   const s = String(val ?? '').trim();
+  if (!s) return s;
 
-  const m = s.match(/^(\d+)\.(\d{2})(.*)$/);
-  if (m) {
-    const [, p1, p2, rest] = m;
-    if (p2.startsWith('1')) {
-      const finalCode = `${p1}.1.${p2.slice(1)}`;
-      return rest && rest.trim() ? `${finalCode}${rest}` : finalCode;
-    }
-    return s;
+  const mThreePart = s.match(/^(\d+\.\d+\.\d+)(.*)$/);
+  if (mThreePart) {
+    const [, code, rest] = mThreePart;
+    return rest && rest.trim() ? `${code}${rest}` : code;
   }
 
-  if (/^\d{3,}$/.test(s)) {
-    return `${s.slice(0, -2)}.${s.slice(-2)}`;
+  const mTwoPart = s.match(/^(\d+)\.(\d{2})(.*)$/);
+  if (mTwoPart) {
+    const [, p1, p2, rest] = mTwoPart;
+    const normalized = `${p1}.${p2[0]}.${p2[1]}`;
+    return rest && rest.trim() ? `${normalized}${rest}` : normalized;
+  }
+
+  const mCompact = s.match(/^(\d{3,})(.*)$/);
+  if (mCompact) {
+    const [, digits, rest] = mCompact;
+    const normalized =
+      digits.length === 3
+        ? `${digits[0]}.${digits[1]}.${digits[2]}`
+        : `${digits.slice(0, -2)}.${digits.slice(-2, -1)}.${digits.slice(-1)}`;
+    return rest && rest.trim() ? `${normalized}${rest}` : normalized;
   }
 
   return s;
@@ -363,6 +448,10 @@ const emptyDetailData = () => ({
     subProp: null,
     dimMed: null,
     dimProp: null,
+  },
+  ranking: {
+    cursos: null,
+    campi: null,
   },
 });
 
@@ -653,12 +742,19 @@ function pickCampusRow(objLike) {
 export default function DiscenteDashboardClient({ initialData, filtersOptions }) {
   const [activeTab, setActiveTab] = useState('dimensoes');
   const [selectedFilters, setSelectedFilters] = useState({
+    dimensao: '',
     ano: '',
     campus: 'todos',
     curso: 'todos',
   });
 
   const [dynamicFilters, setDynamicFilters] = useState({
+    dimensoes: [
+      { value: '1', label: 'Dimensão 1' },
+      { value: '2', label: 'Dimensão 2' },
+      { value: '3', label: 'Dimensão 3' },
+      { value: '4', label: 'Dimensão 4' },
+    ],
     anos: filtersOptions?.anos ?? [],
     campus: filtersOptions?.campus ?? [],
     cursos: filtersOptions?.cursos ?? [],
@@ -684,6 +780,8 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
   const [loadedTabs, setLoadedTabs] = useState({ dimensoes: true });
 
   const hasSelectedYear = Boolean(selectedFilters.ano);
+  const selectedDimension = selectedFilters.dimensao || '';
+  const isDimensionMode = Boolean(selectedDimension);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -700,11 +798,17 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
         const data = await res.json();
 
-        setDynamicFilters({
+        setDynamicFilters((prev) => ({
+          dimensoes: prev?.dimensoes ?? [
+            { value: '1', label: 'Dimensão 1' },
+            { value: '2', label: 'Dimensão 2' },
+            { value: '3', label: 'Dimensão 3' },
+            { value: '4', label: 'Dimensão 4' },
+          ],
           anos: data?.anos ?? [],
           campus: [],
           cursos: [],
-        });
+        }));
       } catch (err) {
         if (err?.name === 'AbortError') return;
         setError(err?.message ?? 'Erro ao carregar filtros iniciais');
@@ -746,6 +850,12 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
         const data = await res.json();
 
         setDynamicFilters((prev) => ({
+          dimensoes: prev?.dimensoes ?? [
+            { value: '1', label: 'Dimensão 1' },
+            { value: '2', label: 'Dimensão 2' },
+            { value: '3', label: 'Dimensão 3' },
+            { value: '4', label: 'Dimensão 4' },
+          ],
           anos: data?.anos ?? prev.anos ?? [],
           campus: data?.campus ?? [],
           cursos: data?.cursos ?? [],
@@ -1204,6 +1314,36 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
           );
           if (cancelled) return;
           setDetailData((prev) => ({ ...prev, atividades: { doc } }));
+        } else if (tabKey === 'ranking_cursos') {
+          const cursos = await pFetch(
+            make('/participantes/ranking/cursos', selectedFilters),
+            'Falha ao buscar ranking dos cursos'
+          );
+
+          if (cancelled) return;
+
+          setDetailData((prev) => ({
+            ...prev,
+            ranking: {
+              ...(prev.ranking ?? {}),
+              cursos,
+            },
+          }));
+        } else if (tabKey === 'ranking_campi') {
+          const campi = await pFetch(
+            make('/participantes/ranking/campi', selectedFilters),
+            'Falha ao buscar ranking dos campi'
+          );
+
+          if (cancelled) return;
+
+          setDetailData((prev) => ({
+            ...prev,
+            ranking: {
+              ...(prev.ranking ?? {}),
+              campi,
+            },
+          }));
         }
 
         if (!cancelled) setLoadedTabs((p) => ({ ...p, [tabKey]: true }));
@@ -1215,13 +1355,22 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
       }
     };
 
-    runTab(activeTab);
+    if (!selectedDimension) {
+      runTab(activeTab);
+    } else if (selectedDimension === '3') {
+      runTab('instalacoes');
+    } else if (selectedDimension === '4') {
+      runTab('atividades');
+    } else {
+      runTab('autoavaliacao');
+      runTab('base_docente');
+    }
 
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, [activeTab, hasSelectedYear, loadedTabs, selectedFilters]);
+  }, [activeTab, hasSelectedYear, loadedTabs, selectedFilters, selectedDimension]);
 
   const datasets = useMemo(
     () => ({
@@ -1238,8 +1387,16 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     const { name, value } = e.target;
 
     setSelectedFilters((prev) => {
+      if (name === 'dimensao') {
+        return {
+          ...prev,
+          dimensao: value,
+        };
+      }
+
       if (name === 'ano') {
         return {
+          dimensao: prev.dimensao ?? '',
           ano: value,
           campus: 'todos',
           curso: 'todos',
@@ -1275,12 +1432,20 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
       { key: 'base_docente', label: 'Avaliação da Ação Docente' },
       { key: 'instalacoes', label: 'Instalações Físicas' },
       { key: 'atividades', label: 'Atividades Acadêmicas' },
+      { key: 'ranking_cursos', label: 'Ranking dos Cursos' },
+      { key: 'ranking_campi', label: 'Ranking dos Campi' },
     ],
     []
   );
 
   const isGlobalLoading = isLoading;
-  const isTabLoading = !!tabLoading[activeTab];
+  const isTabLoading = isDimensionMode
+    ? selectedDimension === '3'
+      ? !!tabLoading.instalacoes
+      : selectedDimension === '4'
+        ? !!tabLoading.atividades
+        : !!tabLoading.autoavaliacao || !!tabLoading.base_docente
+    : !!tabLoading[activeTab];
 
   const dd = detailData;
 
@@ -1333,6 +1498,9 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
   const itensInstalacoesMedDoc = dd.instalacoes?.medDoc;
   const itensInstalacoesPropDoc = dd.instalacoes?.propDoc;
 
+  const rankingCursos = dd.ranking?.cursos;
+  const rankingCampi = dd.ranking?.campi;
+
   const xTicksNoRot = { maxRotation: 0, minRotation: 0, autoSkip: false };
 
   const bestCampus =
@@ -1362,43 +1530,45 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
         {!error && (
           <>
-            <div className={styles.statsGrid}>
-              <StatCard
-                title="Total de Respondentes"
-                value={
-                  hasSelectedYear
-                    ? v0(summaryData?.total_respondentes) ?? '...'
-                    : 'N/D'
-                }
-                icon={<Users />}
-              />
+            {hasSelectedYear && (
+              <div className={styles.statsGrid}>
+                <StatCard
+                  title="Total de Discentes que responderam"
+                  value={
+                    hasSelectedYear
+                      ? v0(summaryData?.total_respondentes) ?? '...'
+                      : 'N/D'
+                  }
+                  icon={<Users />}
+                />
 
-              <StatCard
-                title="Campus Melhor Avaliado"
-                value={hasSelectedYear ? bestCampus?.campus ?? 'N/D' : 'N/D'}
-                subtitle={`Média: ${
-                  hasSelectedYear &&
-                  bestCampus?.media !== null &&
-                  bestCampus?.media !== undefined
-                    ? Number(bestCampus.media).toFixed(2)
-                    : 'N/D'
-                }`}
-                icon={<TrendingUp />}
-              />
+                <StatCard
+                  title="Campus Melhor Avaliado"
+                  value={hasSelectedYear ? bestCampus?.campus ?? 'N/D' : 'N/D'}
+                  subtitle={`Média: ${
+                    hasSelectedYear &&
+                    bestCampus?.media !== null &&
+                    bestCampus?.media !== undefined
+                      ? Number(bestCampus.media).toFixed(2)
+                      : 'N/D'
+                  }`}
+                  icon={<TrendingUp />}
+                />
 
-              <StatCard
-                title="Campus Pior Avaliado"
-                value={hasSelectedYear ? worstCampus?.campus ?? 'N/D' : 'N/D'}
-                subtitle={`Média: ${
-                  hasSelectedYear &&
-                  worstCampus?.media !== null &&
-                  worstCampus?.media !== undefined
-                    ? Number(worstCampus.media).toFixed(2)
-                    : 'N/D'
-                }`}
-                icon={<TrendingDown />}
-              />
-            </div>
+                <StatCard
+                  title="Campus Pior Avaliado"
+                  value={hasSelectedYear ? worstCampus?.campus ?? 'N/D' : 'N/D'}
+                  subtitle={`Média: ${
+                    hasSelectedYear &&
+                    worstCampus?.media !== null &&
+                    worstCampus?.media !== undefined
+                      ? Number(worstCampus.media).toFixed(2)
+                      : 'N/D'
+                  }`}
+                  icon={<TrendingDown />}
+                />
+              </div>
+            )}
 
             <div style={{ marginTop: '1rem', marginBottom: '0.75rem' }}>
               <DiscenteFilters
@@ -1420,23 +1590,25 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                   padding: '2rem',
                 }}
               >
-                <p style={{ fontSize: '1rem', color: '#666' }}>
-                  Selecione um ano para visualizar os dados.
+                <p style={{ fontSize: '1.2rem', color: '#FA360A', fontWeight: 'bold' }}>
+                  Selecione o ano para mostrar os gráficos e estatísticas.
                 </p>
               </div>
             ) : (
               <div>
-                <div className={styles.tabsContainer}>
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab.key}
-                      className={activeTab === tab.key ? styles.activeTab : styles.tab}
-                      onClick={() => setActiveTab(tab.key)}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
+                {!isDimensionMode && (
+                  <div className={styles.tabsContainer}>
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab.key}
+                        className={activeTab === tab.key ? styles.activeTab : styles.tab}
+                        onClick={() => setActiveTab(tab.key)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div
                   className={styles.chartDisplayArea}
@@ -1449,7 +1621,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                 >
                   {isTabLoading && <LoadingOverlay />}
 
-                  {activeTab === 'dimensoes' && (
+                  {!isDimensionMode && activeTab === 'dimensoes' && (
                     <DimensoesGeraisTab
                       datasets={datasets}
                       dashboardData={dashboardData}
@@ -1460,11 +1632,12 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                     />
                   )}
 
-                  {activeTab === 'autoavaliacao' && (
+                  {!isDimensionMode && activeTab === 'autoavaliacao' && (
                     <AutoavaliacaoTab
                       styles={styles}
                       disableZoomOptions={disableZoomOptions}
                       twoDecTooltip={twoDecTooltip}
+                      twoDecTooltipWithQuestions={twoDecTooltipWithQuestions}
                       xTicksNoRot={xTicksNoRot}
                       renderDescritivasTable={renderDescritivasTable}
                       formatMediasSubdimChartData={formatMediasSubdimChartData}
@@ -1495,7 +1668,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                     />
                   )}
 
-                  {activeTab === 'atividades' && (
+                  {!isDimensionMode && activeTab === 'atividades' && (
                     <AtividadesAcademicasTab
                       styles={styles}
                       disableZoomOptions={disableZoomOptions}
@@ -1507,11 +1680,12 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                     />
                   )}
 
-                  {activeTab === 'base_docente' && (
+                  {!isDimensionMode && activeTab === 'base_docente' && (
                     <BaseDocenteTab
                       styles={styles}
                       disableZoomOptions={disableZoomOptions}
                       twoDecTooltip={twoDecTooltip}
+                      twoDecTooltipWithQuestions={twoDecTooltipWithQuestions}
                       xTicksNoRot={xTicksNoRot}
                       formatMediasSubdimChartData={formatMediasSubdimChartData}
                       formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
@@ -1537,11 +1711,12 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                     />
                   )}
 
-                  {activeTab === 'instalacoes' && (
+                  {!isDimensionMode && activeTab === 'instalacoes' && (
                     <InstalacoesFisicasTab
                       styles={styles}
                       disableZoomOptions={disableZoomOptions}
                       twoDecTooltip={twoDecTooltip}
+                      twoDecTooltipWithQuestions={twoDecTooltipWithQuestions}
                       formatProporcoesItensChartData={formatProporcoesItensChartData}
                       formatMediasItensChartData={formatMediasItensChartData}
                       itensInstalacoesProp={itensInstalacoesProp}
@@ -1549,6 +1724,121 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                       itensInstalacoesMed={itensInstalacoesMed}
                       itensInstalacoesMedDoc={itensInstalacoesMedDoc}
                       itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
+                    />
+                  )}
+
+                  {!isDimensionMode && activeTab === 'ranking_cursos' && (
+                    <RankingParticipantesTab
+                      title="Ranking por Cursos"
+                      description="Ranking que apresenta o quantitativo de participantes por curso, considerando discentes e docentes, conforme os filtros selecionados."
+                      rows={rankingCursos}
+                      entityLabel="Curso"
+                    />
+                  )}
+
+                  {!isDimensionMode && activeTab === 'ranking_campi' && (
+                    <RankingParticipantesTab
+                      title="Ranking por Campi"
+                      description="Ranking que apresenta o quantitativo de participantes por campus, considerando discentes e docentes, conforme os filtros selecionados."
+                      rows={rankingCampi}
+                      entityLabel="Campus"
+                    />
+                  )}
+
+                  {isDimensionMode && (selectedDimension === '1' || selectedDimension === '2') && (
+                    <>
+                      <AutoavaliacaoTab
+                        styles={styles}
+                        disableZoomOptions={disableZoomOptions}
+                        twoDecTooltip={twoDecTooltip}
+                        twoDecTooltipWithQuestions={twoDecTooltipWithQuestions}
+                        xTicksNoRot={xTicksNoRot}
+                        renderDescritivasTable={renderDescritivasTable}
+                        formatMediasSubdimChartData={formatMediasSubdimChartData}
+                        formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
+                        formatMediasItensChartData={formatMediasItensChartData}
+                        formatProporcoesItensChartData={formatProporcoesItensChartData}
+                        acaoDocSubMedDisc={acaoDocSubMedDisc}
+                        acaoDocSubPropDisc={acaoDocSubPropDisc}
+                        acaoDocSubBoxDisc={acaoDocSubBoxDisc}
+                        docenteMed={docenteMed}
+                        docenteProp={docenteProp}
+                        docenteBox={docenteBox}
+                        itensAutoMed={itensAutoMed}
+                        itensAutoProp={itensAutoProp}
+                        itensAutoBox={itensAutoBox}
+                        itensAtitudeMedDisc={itensAtitudeMedDisc}
+                        itensAtitudePropDisc={itensAtitudePropDisc}
+                        itensAtitudeBoxDisc={itensAtitudeBoxDisc}
+                        itensGestaoMedDisc={itensGestaoMedDisc}
+                        itensGestaoPropDisc={itensGestaoPropDisc}
+                        itensGestaoBoxDisc={itensGestaoBoxDisc}
+                        procDiscMed={procDiscMed}
+                        procDiscProp={procDiscProp}
+                        procDiscBox={procDiscBox}
+                        itensInstalacoesMed={itensInstalacoesMed}
+                        itensInstalacoesProp={itensInstalacoesProp}
+                        itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
+                        dimensionFilter={selectedDimension}
+                      />
+
+                      <BaseDocenteTab
+                        styles={styles}
+                        disableZoomOptions={disableZoomOptions}
+                        twoDecTooltip={twoDecTooltip}
+                        twoDecTooltipWithQuestions={twoDecTooltipWithQuestions}
+                        xTicksNoRot={xTicksNoRot}
+                        formatMediasSubdimChartData={formatMediasSubdimChartData}
+                        formatProporcoesSubdimChartData={formatProporcoesSubdimChartData}
+                        formatMediasItensChartData={formatMediasItensChartData}
+                        formatProporcoesItensChartData={formatProporcoesItensChartData}
+                        normalizeAtitudeDocenteChartData={normalizeAtitudeDocenteChartData}
+                        formatMediasDimDocente={formatMediasDimDocente}
+                        formatProporcoesDimDocente={formatProporcoesDimDocente}
+                        docSubMed={docSubMed}
+                        docSubProp={docSubProp}
+                        docTurmaMed={docTurmaMed}
+                        docTurmaProp={docTurmaProp}
+                        itensAtitudeMedDoc={itensAtitudeMedDoc}
+                        itensAtitudePropDoc={itensAtitudePropDoc}
+                        itensGestaoMedDoc={itensGestaoMedDoc}
+                        itensGestaoPropDoc={itensGestaoPropDoc}
+                        procDocMed={procDocMed}
+                        procDocProp={procDocProp}
+                        itensInstalacoesMedDoc={itensInstalacoesMedDoc}
+                        itensInstalacoesPropDoc={itensInstalacoesPropDoc}
+                        docDimMed={docDimMed}
+                        docDimProp={docDimProp}
+                        dimensionFilter={selectedDimension}
+                      />
+                    </>
+                  )}
+
+                  {isDimensionMode && selectedDimension === '3' && (
+                    <InstalacoesFisicasTab
+                      styles={styles}
+                      disableZoomOptions={disableZoomOptions}
+                      twoDecTooltip={twoDecTooltip}
+                      twoDecTooltipWithQuestions={twoDecTooltipWithQuestions}
+                      formatProporcoesItensChartData={formatProporcoesItensChartData}
+                      formatMediasItensChartData={formatMediasItensChartData}
+                      itensInstalacoesProp={itensInstalacoesProp}
+                      itensInstalacoesPropDoc={itensInstalacoesPropDoc}
+                      itensInstalacoesMed={itensInstalacoesMed}
+                      itensInstalacoesMedDoc={itensInstalacoesMedDoc}
+                      itensInstalacoesBoxDisc={itensInstalacoesBoxDisc}
+                    />
+                  )}
+
+                  {isDimensionMode && selectedDimension === '4' && (
+                    <AtividadesAcademicasTab
+                      styles={styles}
+                      disableZoomOptions={disableZoomOptions}
+                      twoDecTooltip={twoDecTooltip}
+                      xTicksNoRot={xTicksNoRot}
+                      discenteChartData={datasets.atividades}
+                      atividadesDoc={atividadesDoc}
+                      formatAtividadesChartData={formatAtividadesChartData}
                     />
                   )}
                 </div>

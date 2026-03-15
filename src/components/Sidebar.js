@@ -13,17 +13,12 @@ import {
 } from 'lucide-react';
 import styles from '../styles/Sidebar.module.css';
 
-// 1. IMPORTE SEU LOADING OVERLAY (Ajuste o caminho se necessário)
-// Supondo que Sidebar esteja em /src/components e o Overlay em /src/app/avaliacao/avalia/components/
-import LoadingOverlay from '../app/avaliacao/avalia/components/LoadingOverlay'; 
+import LoadingOverlay from '../app/avaliacao/avalia/components/LoadingOverlay';
 
 const Sidebar = () => {
   const pathname = usePathname();
-
-  // 2. ESTADO PARA CONTROLAR O LOADING MANUALMENTE
   const [isLoading, setIsLoading] = useState(false);
 
-  // 3. EFEITO PARA DESLIGAR O LOADING QUANDO A ROTA MUDAR
   useEffect(() => {
     setIsLoading(false);
   }, [pathname]);
@@ -33,9 +28,10 @@ const Sidebar = () => {
     presencialEnabled: true,
   };
 
+  // CORREÇÃO AQUI: presencial precisa estar true
   const reportEnabled = {
     ead: true,
-    presencial: false,
+    presencial: true,
     minhaOpiniao: false,
   };
 
@@ -97,12 +93,12 @@ const Sidebar = () => {
     inModalidade && !isReportPage ? styles.activeParent : '';
 
   const showGenerateButton =
-    (
-      pathname === '/avaliacao' || 
-      (pathname.startsWith('/avaliacao/ead') && reportEnabled.ead) ||
-      (pathname.startsWith('/avaliacao/avalia/presencial') && reportEnabled.presencial) ||
-      (pathname.startsWith('/avaliacao/minhaopiniao') && reportEnabled.minhaOpiniao)
-    );
+    pathname === '/avaliacao' ||
+    (pathname.startsWith('/avaliacao/ead') && reportEnabled.ead) ||
+    (pathname.startsWith('/avaliacao/avalia/presencial') &&
+      reportEnabled.presencial) ||
+    (pathname.startsWith('/avaliacao/minhaopiniao') &&
+      reportEnabled.minhaOpiniao);
 
   const isReportActive = isReportPage;
 
@@ -137,8 +133,12 @@ const Sidebar = () => {
 
   return (
     <>
-      {/* 4. RENDERIZA O LOADING SE ESTIVER ATIVO */}
-      {isLoading && <LoadingOverlay isFullScreen={true} message="Carregando dados..." />}
+      {isLoading && (
+        <LoadingOverlay
+          isFullScreen={true}
+          message="Carregando dados..."
+        />
+      )}
 
       <aside className={styles.sidebar}>
         <div
@@ -275,8 +275,7 @@ const Sidebar = () => {
                                 : styles.subMenuItem
                             }
                           >
-                            {/* 5. AQUI: O CLIQUE ATIVA O LOADING */}
-                            <Link 
+                            <Link
                               href="/avaliacao/avalia/presencial"
                               onClick={() => setIsLoading(true)}
                             >
@@ -284,6 +283,7 @@ const Sidebar = () => {
                             </Link>
                           </li>
                         )}
+
                         <li
                           className={
                             pathname.startsWith('/avaliacao/ead')
@@ -291,7 +291,12 @@ const Sidebar = () => {
                               : styles.subMenuItem
                           }
                         >
-                          <Link href="/avaliacao/ead">EAD</Link>
+                          <Link
+                            href="/avaliacao/ead"
+                            onClick={() => setIsLoading(true)}
+                          >
+                            EAD
+                          </Link>
                         </li>
                       </>
                     )}
@@ -308,6 +313,7 @@ const Sidebar = () => {
                 aria-label="Gerar relatório"
                 className={styles.generateReportBtn}
                 style={activeReportBtnStyle}
+                onClick={() => setIsLoading(true)}
               >
                 <Download size={18} />
                 <span>Gerar relatório</span>

@@ -2,11 +2,13 @@
 
 import ActivityChart from '../../components/ActivityChart';
 import BoxplotChart from '../../components/BoxplotChart';
+import { QUESTION_MAPPING_AVALIA } from '../../lib/questionMappingAvalia';
 
 export default function InstalacoesFisicasTab({
   styles,
   disableZoomOptions,
   twoDecTooltip,
+  twoDecTooltipWithQuestions,
   // ticks/formatters
   formatProporcoesItensChartData,
   formatMediasItensChartData,
@@ -57,7 +59,10 @@ export default function InstalacoesFisicasTab({
                 title="Médias — Itens de Instalações Físicas (Discente)"
                 customOptions={{
                   ...disableZoomOptions,
-                  plugins: { legend: { display: false } },
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.discente.instalacoes),
+                  },
                   scales: { y: { max: 4 } },
                 }}
               />
@@ -73,7 +78,10 @@ export default function InstalacoesFisicasTab({
                 title="Médias — Itens de Instalações Físicas (Docente)"
                 customOptions={{
                   ...disableZoomOptions,
-                  plugins: { legend: { display: false } },
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: twoDecTooltipWithQuestions('', QUESTION_MAPPING_AVALIA.docente.instalacoes),
+                  },
                   scales: { y: { max: 4 } },
                 }}
               />
@@ -91,7 +99,9 @@ export default function InstalacoesFisicasTab({
               title="Proporções — Itens de Instalações Físicas (Discente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.discente.instalacoes),
+                },
               }}
             />
           ) : (
@@ -106,7 +116,9 @@ export default function InstalacoesFisicasTab({
               title="Proporções — Itens de Instalações Físicas (Docente)"
               customOptions={{
                 ...disableZoomOptions,
-                plugins: { tooltip: twoDecTooltip('%') },
+                plugins: {
+                  tooltip: twoDecTooltipWithQuestions('%', QUESTION_MAPPING_AVALIA.docente.instalacoes),
+                },
               }}
             />
           ) : (

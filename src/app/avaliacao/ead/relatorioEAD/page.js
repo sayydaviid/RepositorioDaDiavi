@@ -31,13 +31,19 @@ async function getFiltersByYear() {
     const csvData = fs.readFileSync(file2025, 'utf8');
     const parsed = Papa.parse(csvData, { header: true, skipEmptyLines: true });
     const data2025 = parsed.data || [];
+
     const polos = uniqSorted(
       data2025.map((r) => r['Qual o seu Polo de Vinculação?'])
     );
     const cursos = uniqSorted(
       data2025.map((r) => r['Qual é o seu Curso?'])
     );
-    filtersByYear['2025'] = { hasPolos: polos.length > 0, polos, cursos };
+
+    filtersByYear['2025'] = {
+      hasPolos: polos.length > 0,
+      polos,
+      cursos,
+    };
     anos.add('2025');
   } catch (e) {
     console.warn('Aviso ao carregar dados de 2025:', e?.message);
@@ -55,15 +61,23 @@ async function getFiltersByYear() {
       skipEmptyLines: true,
     });
     const rows = parsed2023.data || [];
+
     if (rows.length) {
-      const idxCurso = 1; // coluna com o curso
+      const idxCurso = 1;
       const cursosSet = new Set();
+
       rows.forEach((r) => {
         const c = (r?.[idxCurso] || '').toString().trim();
         if (c && !/^qual\b/i.test(c)) cursosSet.add(c);
       });
+
       const cursos = uniqSorted([...cursosSet]);
-      filtersByYear['2023'] = { hasPolos: false, polos: [], cursos };
+
+      filtersByYear['2023'] = {
+        hasPolos: false,
+        polos: [],
+        cursos,
+      };
       anos.add('2023');
     }
   } catch (e) {
@@ -104,8 +118,10 @@ async function RelatorioLoader({ searchParamsResolved }) {
 
 // Página
 export default async function Page({ searchParams }) {
-  // ✅ Em versões recentes do Next, searchParams pode ser uma Promise
-  const sp = typeof searchParams?.then === 'function' ? await searchParams : searchParams || {};
+  const sp =
+    typeof searchParams?.then === 'function'
+      ? await searchParams
+      : (searchParams || {});
 
   return (
     <div className={styles.mainContent}>
@@ -118,7 +134,6 @@ export default async function Page({ searchParams }) {
           </p>
         }
       >
-        {/* Passa o objeto já resolvido */}
         <RelatorioLoader searchParamsResolved={sp} />
       </Suspense>
     </div>

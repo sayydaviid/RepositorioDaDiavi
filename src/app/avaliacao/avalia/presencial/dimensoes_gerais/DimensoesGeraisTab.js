@@ -22,7 +22,8 @@ export default function DimensoesGeraisTab({
         overflow: 'visible',
       }}
     >
-      <div className={styles.chartContainer}>
+      {/* ADICIONADO id="chart-medias-dimensoes" PARA O PDF ENCONTRAR O GRÁFICO */}
+      <div id="chart-medias-dimensoes" className={styles.chartContainer}>
         <ActivityChart
           chartData={datasets.discMedias}
           title="Médias por dimensão (Discente)"
@@ -54,7 +55,8 @@ export default function DimensoesGeraisTab({
         )}
       </div>
 
-      <div className={styles.chartContainer}>
+      {/* ADICIONADO id="chart-dimensoes" PARA O PDF ENCONTRAR O GRÁFICO */}
+      <div id="chart-dimensoes" className={styles.chartContainer}>
         <ActivityChart
           chartData={datasets.discProporcoes}
           title="Proporções de respostas dadas por Dimensão (Discente)"
@@ -80,8 +82,9 @@ export default function DimensoesGeraisTab({
         )}
       </div>
 
-      {/* Caixa 1: O Boxplot em si */}
+      {/* ADICIONADO id="chart-boxplot-dimensoes" PARA O PDF ENCONTRAR O GRÁFICO */}
       <div
+        id="chart-boxplot-dimensoes"
         className={styles.chartContainer}
         style={{ gridColumn: '1 / -1', minHeight: '400px' }}
       >

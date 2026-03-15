@@ -1,20 +1,55 @@
-// lib/neon-cache.js
 import { Pool } from 'pg';
 
 const globalForDb = globalThis;
 
+function sanitizeDatabaseUrl(rawUrl) {
+  if (!rawUrl) return rawUrl;
+
+  try {
+    const url = new URL(rawUrl);
+
+    // Evita conflito entre sslmode da URL e ssl no config
+    url.searchParams.delete('sslmode');
+    url.searchParams.delete('sslcert');
+    url.searchParams.delete('sslkey');
+    url.searchParams.delete('sslrootcert');
+
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+const connectionString = sanitizeDatabaseUrl(process.env.DATABASE_URL);
+
 export const pool =
   globalForDb.__dashboardPool ??
   new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+    connectionString,
+    ssl: connectionString ? { rejectUnauthorized: false } : undefined,
+
+    // Mais tolerante para ambiente serverless
+    max: 3,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 12000,
+
+    // Evita matar query curta demais
+    query_timeout: 15000,
+    statement_timeout: 15000,
+
+    allowExitOnIdle: true,
   });
 
 if (!globalForDb.__dashboardPool) {
   globalForDb.__dashboardPool = pool;
+
+  pool.on('error', (err) => {
+    console.error('[neon-cache] pool error:', err);
+  });
 }
 
-let tableReadyPromise = null;
+let tableEnsured = false;
+let tableEnsurePromise = null;
 
 function normalizeCacheValue(value, fallback = 'todos') {
   if (value === null || value === undefined) return fallback;
@@ -23,42 +58,49 @@ function normalizeCacheValue(value, fallback = 'todos') {
 }
 
 export async function ensureCacheTable() {
-  if (tableReadyPromise) return tableReadyPromise;
+  if (tableEnsured) return;
+  if (tableEnsurePromise) return tableEnsurePromise;
 
-  tableReadyPromise = (async () => {
+  tableEnsurePromise = (async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS dashboard_cache (
-        id BIGSERIAL PRIMARY KEY,
         endpoint TEXT NOT NULL,
         ano TEXT NULL,
         campus TEXT NOT NULL DEFAULT 'todos',
         curso TEXT NOT NULL DEFAULT 'todos',
         payload JSONB NOT NULL,
-        hf_url TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        hf_url TEXT,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      )
     `);
 
+    // índice para registros com ano
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_dashboard_cache_lookup
-      ON dashboard_cache (endpoint, ano, campus, curso);
-    `);
-
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS ux_dashboard_cache_with_ano
+      CREATE UNIQUE INDEX IF NOT EXISTS dashboard_cache_unique_with_ano
       ON dashboard_cache (endpoint, ano, campus, curso)
-      WHERE ano IS NOT NULL;
+      WHERE ano IS NOT NULL
+    `);
+
+    // índice para registros sem ano
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS dashboard_cache_unique_without_ano
+      ON dashboard_cache (endpoint, campus, curso)
+      WHERE ano IS NULL
     `);
 
     await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS ux_dashboard_cache_without_ano
-      ON dashboard_cache (endpoint, campus, curso)
-      WHERE ano IS NULL;
+      CREATE INDEX IF NOT EXISTS dashboard_cache_updated_at_idx
+      ON dashboard_cache (updated_at DESC)
     `);
+
+    tableEnsured = true;
   })();
 
-  return tableReadyPromise;
+  try {
+    await tableEnsurePromise;
+  } finally {
+    tableEnsurePromise = null;
+  }
 }
 
 export async function getCachedPayload({
@@ -67,6 +109,8 @@ export async function getCachedPayload({
   campus = 'todos',
   curso = 'todos',
 }) {
+  await ensureCacheTable();
+
   const campusNorm = normalizeCacheValue(campus, 'todos');
   const cursoNorm = normalizeCacheValue(curso, 'todos');
 
@@ -94,6 +138,8 @@ export async function saveCachedPayload({
   hfUrl,
   payload,
 }) {
+  await ensureCacheTable();
+
   const campusNorm = normalizeCacheValue(campus, 'todos');
   const cursoNorm = normalizeCacheValue(curso, 'todos');
 
