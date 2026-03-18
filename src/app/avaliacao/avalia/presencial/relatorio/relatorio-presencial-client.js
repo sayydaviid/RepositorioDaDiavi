@@ -676,8 +676,8 @@ export default function RelatorioPresencialClient({
 
   const [selected, setSelected] = useState({
     ano: initialSelected?.ano || '',
-    campus: initialSelected?.campus || 'todos',
-    curso: initialSelected?.curso || 'todos',
+    campus: initialSelected?.campus || '',
+    curso: initialSelected?.curso || '',
   });
 
   const [dynamicFilters, setDynamicFilters] = useState({
@@ -710,7 +710,9 @@ export default function RelatorioPresencialClient({
   const hiddenBoxplotRef = useRef(null);
 
   const hasSelectedYear = Boolean(selected.ano);
-  const canGenerate = hasSelectedYear && summaryData !== null;
+  const hasSelectedCampus = Boolean(selected.campus);
+  const hasSelectedCourse = Boolean(selected.curso);
+  const canGenerate = hasSelectedYear && hasSelectedCampus && hasSelectedCourse && summaryData !== null;
 
   const make = (endpoint, filters = {}) => {
     const qs = new URLSearchParams();
@@ -1067,7 +1069,14 @@ export default function RelatorioPresencialClient({
   }, []);
 
   useEffect(() => {
-    if (!selected.ano) return;
+    if (!selected.ano) {
+      setDynamicFilters((prev) => ({
+        ...prev,
+        campus: [],
+        cursos: [],
+      }));
+      return;
+    }
 
     const controller = new AbortController();
 
@@ -1098,7 +1107,7 @@ export default function RelatorioPresencialClient({
   }, [summaryData]);
 
   useEffect(() => {
-    if (!selected.ano) {
+    if (!selected.ano || !selected.campus || !selected.curso) {
       setSummaryData(null);
       return;
     }
@@ -1140,9 +1149,9 @@ export default function RelatorioPresencialClient({
     let next = { ...selected, [name]: value };
 
     if (name === 'ano') {
-      next = { ano: value, campus: 'todos', curso: 'todos' };
+      next = { ano: value, campus: '', curso: '' };
     } else if (name === 'campus') {
-      next = { ...selected, campus: value, curso: 'todos' };
+      next = { ...selected, campus: value, curso: '' };
     }
 
     setSelected(next);
@@ -1174,7 +1183,11 @@ export default function RelatorioPresencialClient({
     setProgressText('Coletando dados da API...');
 
     const summarySnapshot = summaryRef.current;
-    const canGenerateSnapshot = Boolean(selectedSnapshot?.ano) && summarySnapshot !== null;
+    const canGenerateSnapshot =
+      Boolean(selectedSnapshot?.ano) &&
+      Boolean(selectedSnapshot?.campus) &&
+      Boolean(selectedSnapshot?.curso) &&
+      summarySnapshot !== null;
 
     if (!canGenerateSnapshot) {
       buildingRef.current = false;
@@ -1203,36 +1216,43 @@ export default function RelatorioPresencialClient({
       // BLOCO SUBDIMENSÕES DA AÇÃO DOCENTE
       // ---------------------------------------------------------------------
       const acaoDocSubMedDisc = await fetchJsonOptional(
-        '/discente/acaodocente/subdimensoes/medias'
+        '/discente/acaodocente/subdimensoes/medias',
+        selectedSnapshot
       );
       setProgress(18);
 
       const autoAcaoDocSubMed = await fetchJsonOptional(
-        '/docente/autoavaliacao/subdimensoes/medias'
+        '/docente/autoavaliacao/subdimensoes/medias',
+        selectedSnapshot
       );
       setProgress(21);
 
       const acaoDocSubPropDisc = await fetchJsonOptional(
-        '/discente/acaodocente/subdimensoes/proporcoes'
+        '/discente/acaodocente/subdimensoes/proporcoes',
+        selectedSnapshot
       );
       setProgress(24);
 
       const autoAcaoDocSubProp = await fetchJsonOptional(
-        '/docente/autoavaliacao/subdimensoes/proporcoes'
+        '/docente/autoavaliacao/subdimensoes/proporcoes',
+        selectedSnapshot
       );
       setProgress(27);
 
       let turmaSubdimBoxplot = await fetchJsonOptional(
-        '/discente/acaodocente/subdimensoes/boxplot'
+        '/discente/acaodocente/subdimensoes/boxplot',
+        selectedSnapshot
       );
       if (!turmaSubdimBoxplot) {
         turmaSubdimBoxplot = await fetchJsonOptional(
-          '/docente/acaodocente/subdimensoes/boxplot'
+          '/docente/acaodocente/subdimensoes/boxplot',
+          selectedSnapshot
         );
       }
       if (!turmaSubdimBoxplot) {
         turmaSubdimBoxplot = await fetchJsonOptional(
-          '/docente_base/autoavaliacao/subdimensoes/boxplot'
+          '/docente_base/autoavaliacao/subdimensoes/boxplot',
+          selectedSnapshot
         );
       }
       setProgress(30);
@@ -1241,27 +1261,32 @@ export default function RelatorioPresencialClient({
       // BLOCO ITENS AUTOAVALIAÇÃO / AVALIAÇÃO DA TURMA
       // ---------------------------------------------------------------------
       const autoavaliacaoItensMedias = await fetchJsonOptional(
-        '/discente/autoavaliacao/itens/medias'
+        '/discente/autoavaliacao/itens/medias',
+        selectedSnapshot
       );
       setProgress(33);
 
       const avaliacaoTurmaItensMedias = await fetchJsonOptional(
-        '/docente/avaliacaoturma/itens/medias'
+        '/docente/avaliacaoturma/itens/medias',
+        selectedSnapshot
       );
       setProgress(36);
 
       const autoavaliacaoItensProporcoes = await fetchJsonOptional(
-        '/discente/autoavaliacao/itens/proporcoes'
+        '/discente/autoavaliacao/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(39);
 
       const avaliacaoTurmaItensProporcoes = await fetchJsonOptional(
-        '/docente/avaliacaoturma/itens/proporcoes'
+        '/docente/avaliacaoturma/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(42);
 
       const autoavaliacaoItensBox = await fetchJsonOptional(
-        '/discente/autoavaliacao/itens/boxplot'
+        '/discente/autoavaliacao/itens/boxplot',
+        selectedSnapshot
       );
       setProgress(45);
 
@@ -1269,27 +1294,32 @@ export default function RelatorioPresencialClient({
       // BLOCO ATITUDE PROFISSIONAL
       // ---------------------------------------------------------------------
       const atitudeProfissionalItensMedias = await fetchJsonOptional(
-        '/discente/atitudeprofissional/itens/medias'
+        '/discente/atitudeprofissional/itens/medias',
+        selectedSnapshot
       );
       setProgress(48);
 
       const atitudeProfissionalItensMediasDoc = await fetchJsonOptional(
-        '/docente/atitudeprofissional/itens/medias'
+        '/docente/atitudeprofissional/itens/medias',
+        selectedSnapshot
       );
       setProgress(51);
 
       const atitudeProfissionalItensProporcoes = await fetchJsonOptional(
-        '/discente/atitudeprofissional/itens/proporcoes'
+        '/discente/atitudeprofissional/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(54);
 
       const atitudeProfissionalItensProporcoesDoc = await fetchJsonOptional(
-        '/docente/atitudeprofissional/itens/proporcoes'
+        '/docente/atitudeprofissional/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(57);
 
       const atitudeProfissionalBoxplot = await fetchJsonOptional(
-        '/discente/atitudeprofissional/itens/boxplot'
+        '/discente/atitudeprofissional/itens/boxplot',
+        selectedSnapshot
       );
       setProgress(60);
 
@@ -1297,27 +1327,32 @@ export default function RelatorioPresencialClient({
       // BLOCO GESTÃO DIDÁTICA
       // ---------------------------------------------------------------------
       const gestaoDidaticaItensMedias = await fetchJsonOptional(
-        '/discente/gestaodidatica/itens/medias'
+        '/discente/gestaodidatica/itens/medias',
+        selectedSnapshot
       );
       setProgress(63);
 
       const gestaoDidaticaItensMediasDoc = await fetchJsonOptional(
-        '/docente/gestaodidatica/itens/medias'
+        '/docente/gestaodidatica/itens/medias',
+        selectedSnapshot
       );
       setProgress(66);
 
       const gestaoDidaticaItensProporcoes = await fetchJsonOptional(
-        '/discente/gestaodidatica/itens/proporcoes'
+        '/discente/gestaodidatica/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(69);
 
       const gestaoDidaticaItensProporcoesDoc = await fetchJsonOptional(
-        '/docente/gestaodidatica/itens/proporcoes'
+        '/docente/gestaodidatica/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(72);
 
       const gestaoDidaticaBoxplot = await fetchJsonOptional(
-        '/discente/gestaodidatica/itens/boxplot'
+        '/discente/gestaodidatica/itens/boxplot',
+        selectedSnapshot
       );
       setProgress(75);
 
@@ -1325,27 +1360,32 @@ export default function RelatorioPresencialClient({
       // BLOCO PROCESSO AVALIATIVO
       // ---------------------------------------------------------------------
       const processoAvaliativoItensMediasDisc = await fetchJsonOptional(
-        '/discente/processoavaliativo/itens/medias'
+        '/discente/processoavaliativo/itens/medias',
+        selectedSnapshot
       );
       setProgress(78);
 
       const processoAvaliativoItensMediasDoc = await fetchJsonOptional(
-        '/docente/processoavaliativo/itens/medias'
+        '/docente/processoavaliativo/itens/medias',
+        selectedSnapshot
       );
       setProgress(80);
 
       const processoAvaliativoItensProporcoesDisc = await fetchJsonOptional(
-        '/discente/processoavaliativo/itens/proporcoes'
+        '/discente/processoavaliativo/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(82);
 
       const processoAvaliativoItensProporcoesDoc = await fetchJsonOptional(
-        '/docente/processoavaliativo/itens/proporcoes'
+        '/docente/processoavaliativo/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(84);
 
       const processoAvaliativoBoxplot = await fetchJsonOptional(
-        '/discente/processoavaliativo/itens/boxplot'
+        '/discente/processoavaliativo/itens/boxplot',
+        selectedSnapshot
       );
       setProgress(86);
 
@@ -1353,48 +1393,65 @@ export default function RelatorioPresencialClient({
       // BLOCO INSTALAÇÕES FÍSICAS
       // ---------------------------------------------------------------------
       const instalacoesItensMediasDisc = await fetchJsonOptional(
-        '/discente/instalacoes/itens/medias'
+        '/discente/instalacoes/itens/medias',
+        selectedSnapshot
       );
       setProgress(88);
 
       const instalacoesItensMediasDoc = await fetchJsonOptional(
-        '/docente/instalacoes/itens/medias'
+        '/docente/instalacoes/itens/medias',
+        selectedSnapshot
       );
       setProgress(89);
 
       const instalacoesItensProporcoesDisc = await fetchJsonOptional(
-        '/discente/instalacoes/itens/proporcoes'
+        '/discente/instalacoes/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(90);
 
       const instalacoesItensProporcoesDoc = await fetchJsonOptional(
-        '/docente/instalacoes/itens/proporcoes'
+        '/docente/instalacoes/itens/proporcoes',
+        selectedSnapshot
       );
       setProgress(91);
 
-      const instalacoesBoxplot = await fetchJsonOptional('/discente/instalacoes/itens/boxplot');
+      const instalacoesBoxplot = await fetchJsonOptional(
+        '/discente/instalacoes/itens/boxplot',
+        selectedSnapshot
+      );
       setProgress(92);
 
       // ---------------------------------------------------------------------
       // BLOCO ATIVIDADES ACADÊMICAS
       // ---------------------------------------------------------------------
-      const atividadesDiscente = await fetchJsonOptional('/discente/atividades/percentual');
+      const atividadesDiscente = await fetchJsonOptional(
+        '/discente/atividades/percentual',
+        selectedSnapshot
+      );
       setProgress(94);
 
-      const atividadesDocente = await fetchJsonOptional('/docente/atividades/percentual');
+      const atividadesDocente = await fetchJsonOptional(
+        '/docente/atividades/percentual',
+        selectedSnapshot
+      );
       setProgress(95);
 
       // ---------------------------------------------------------------------
       // BOXPLOT DIMENSÕES E DESCRITIVAS
       // ---------------------------------------------------------------------
-      let turmaDimBoxplot = await fetchJsonOptional('/docente/avaliacaoturma/dimensoes/boxplot');
+      let turmaDimBoxplot = await fetchJsonOptional(
+        '/docente/avaliacaoturma/dimensoes/boxplot',
+        selectedSnapshot
+      );
       if (!turmaDimBoxplot) {
-        turmaDimBoxplot = await fetchJsonOptional('/docente/dimensoes/boxplot');
+        turmaDimBoxplot = await fetchJsonOptional('/docente/dimensoes/boxplot', selectedSnapshot);
       }
       setProgress(96);
 
       let turmaDimDescritivas = await fetchJsonOptional(
-        '/docente/avaliacaoturma/dimensoes/descritivas'
+        '/docente/avaliacaoturma/dimensoes/descritivas',
+        selectedSnapshot
       );
       if (!turmaDimDescritivas && turmaDimBoxplot && typeof turmaDimBoxplot === 'object') {
         const hasTabela =
@@ -1406,11 +1463,12 @@ export default function RelatorioPresencialClient({
       }
       if (!turmaDimDescritivas) {
         turmaDimDescritivas = await fetchJsonOptional(
-          '/docente/avaliacaoturma/dimensoes/estatisticas'
+          '/docente/avaliacaoturma/dimensoes/estatisticas',
+          selectedSnapshot
         );
       }
       if (!turmaDimDescritivas) {
-        turmaDimDescritivas = await fetchJsonOptional('/docente/dimensoes/descritivas');
+        turmaDimDescritivas = await fetchJsonOptional('/docente/dimensoes/descritivas', selectedSnapshot);
       }
       setProgress(97);
 
@@ -2029,6 +2087,8 @@ export default function RelatorioPresencialClient({
 
   const MissingMsg = () => {
     if (!selected.ano) return <>Selecione <strong>Ano</strong> para começar.</>;
+    if (!selected.campus) return <>Selecione <strong>Campus</strong> para continuar.</>;
+    if (!selected.curso) return <>Selecione <strong>Curso</strong> para continuar.</>;
     return <>Aguarde a preparação do relatório.</>;
   };
 
@@ -2040,6 +2100,8 @@ export default function RelatorioPresencialClient({
             filters={dynamicFilters}
             selectedFilters={selected}
             onFilterChange={handleFilterChange}
+            showDimensionFilter={false}
+            showRankingToggle={false}
           />
         </div>
 

@@ -16,6 +16,7 @@ function truncateText(text, maxLength = 20) {
   if (typeof text !== 'string' || text.length <= maxLength) return text;
   return text.substring(0, maxLength) + '...';
 }
+
 const CONCEITOS = ['Excelente', 'Bom', 'Regular', 'Insuficiente'];
 const NUM_TO_CONCEITO_2023 = { 1: 'Insuficiente', 2: 'Regular', 3: 'Bom', 4: 'Excelente' };
 
@@ -26,13 +27,11 @@ function sanitizeList(list = []) {
     const v = String(s || '').trim();
     if (!v) return true;
     if (v === 'todos') return true;
-    if (/^qual\b/i.test(v)) return true;   // "Qual é o seu Curso?" etc.
-    // placeholders/ruídos
+    if (/^qual\b/i.test(v)) return true;
     if (v === '-- / 0' || v === '--/0' || v === '--' || v === '-' || v === '—' || v === '0') return true;
-    if (/^[\s–—\-_/]*0?\s*$/.test(v)) return true; // só traços/barras/zeros
-    if (/^--/.test(v) || /\/\s*0$/.test(v)) return true; // começa com "--" ou termina com "/ 0"
+    if (/^[\s–—\-_/]*0?\s*$/.test(v)) return true;
+    if (/^--/.test(v) || /\/\s*0$/.test(v)) return true;
 
-    // ✅ mantenha itens com letras OU com 2–4 dígitos (ex.: anos 2025, 2023)
     if (!hasLetters(v) && !/^\d{2,4}$/.test(v)) return true;
 
     return false;
@@ -42,7 +41,6 @@ function sanitizeList(list = []) {
     .map(v => (typeof v === 'string' ? v.trim() : v))
     .filter(v => !isBad(v));
 }
-
 
 function uniqueSorted(arr = []) {
   return Array.from(new Set(arr.filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
@@ -66,7 +64,6 @@ function getIdKeyForYear(year, sampleRow) {
   if (year === '2025') {
     if (sampleRow && 'Nome de usuário' in sampleRow) return 'Nome de usuário';
   }
-  // 2023 ou fallback: usa timestamp se existir
   if (sampleRow && 'Carimbo de data/hora' in sampleRow) return 'Carimbo de data/hora';
   return null;
 }
@@ -95,7 +92,6 @@ function percentile(sorted, p) {
   return sorted[base];
 }
 
-// NOVO: Função para calcular estatísticas descritivas
 function calculateDescriptiveStats(label, values) {
   const v = (values || []).filter(n => Number.isFinite(n));
   const count = v.length;
@@ -129,6 +125,7 @@ function buildApexBoxplotFromValues(label, values, forceNumericX = false) {
       outliers_data: []
     };
   }
+
   const s = [...v].sort((a, b) => a - b);
   const q1_raw = percentile(s, 0.25);
   const med_raw = percentile(s, 0.5);
@@ -137,6 +134,7 @@ function buildApexBoxplotFromValues(label, values, forceNumericX = false) {
   const lowerFence = q1_raw - 1.5 * iqr_raw;
   const upperFence = q3_raw + 1.5 * iqr_raw;
   const inliers = s.filter(x => x >= lowerFence && x <= upperFence);
+
   let whiskerMin = inliers.length ? Math.min(...inliers) : s[0];
   let whiskerMax = inliers.length ? Math.max(...inliers) : s[s.length - 1];
 
@@ -173,6 +171,7 @@ function wrapWords(label, maxLen = 18) {
   const words = String(label).split(' ');
   const lines = [];
   let line = '';
+
   for (const w of words) {
     const tryLine = line ? `${line} ${w}` : w;
     if (tryLine.length > maxLen) {
@@ -182,16 +181,84 @@ function wrapWords(label, maxLen = 18) {
       line = tryLine;
     }
   }
+
   if (line) lines.push(line);
   return lines;
 }
+
 const wrapForApex = (label) => wrapWords(label).join('\n');
+const round2 = (n) => (Number.isFinite(n) ? Number(n.toFixed(2)) : n);
+
+function meanOf(arr = []) {
+  const v = arr.filter(Number.isFinite);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
+/* ========= NOVOS HELPERS DE AGRUPAMENTO PARA BOXPLOT ========= */
+function getDisciplinaFromRow(row = {}) {
+  const keys = Object.keys(row).filter(k => k.startsWith('Selecione para qual disciplina'));
+  if (keys.length) {
+    const values = keys
+      .map(k => row?.[k])
+      .filter(Boolean)
+      .map(v => String(v).trim())
+      .filter(Boolean);
+
+    return values.sort((a, b) => a.localeCompare(b, 'pt-BR')).join(' | ');
+  }
+
+  return row?.disciplina ? String(row.disciplina).trim() : '';
+}
+
+function getGroupKeyForEad(row = {}, year = '2025', idx = 0) {
+  const turmaOuDocente =
+    row['Turma/Docente'] ??
+    row['Turma'] ??
+    row['Docente'] ??
+    row['Professor'] ??
+    row['Nome do docente'] ??
+    row['Nome do Professor'] ??
+    row['Nome da turma'] ??
+    '';
+
+  const curso =
+    year === '2025'
+      ? (row['Qual é o seu Curso?'] ?? '')
+      : (row['Qual é o seu Curso?'] ?? row['curso'] ?? '');
+
+  const polo =
+    year === '2025'
+      ? (row['Qual o seu Polo de Vinculação?'] ?? '')
+      : '';
+
+  const disciplina = getDisciplinaFromRow(row);
+
+  const key = [turmaOuDocente, curso, polo, disciplina]
+    .map(v => String(v || '').trim())
+    .filter(Boolean)
+    .join(' • ');
+
+  return key || `row_${idx}`;
+}
+
+function groupRowsForBoxplot(rows = [], year = '2025') {
+  const grouped = new Map();
+
+  rows.forEach((row, idx) => {
+    const key = getGroupKeyForEad(row, year, idx);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  });
+
+  return grouped;
+}
 
 /* ---------- Formatação para os gráficos ---------- */
 function formatProporcoesChartData(apiData) {
   if (!apiData || !apiData.length) return { labels: [], datasets: [] };
   const labels = [...new Set(apiData.map(item => item.dimensao))];
   const colorMap = { Excelente: '#1D556F', Bom: '#288FB4', Regular: '#F0B775', Insuficiente: '#FA360A' };
+
   const datasets = CONCEITOS.map(conceito => ({
     label: conceito,
     data: labels.map(label => {
@@ -200,6 +267,7 @@ function formatProporcoesChartData(apiData) {
     }),
     backgroundColor: colorMap[conceito]
   }));
+
   return { labels, datasets };
 }
 
@@ -207,6 +275,7 @@ function formatProporcoesItensChartData(apiData) {
   if (!apiData || !apiData.length) return { labels: [], datasets: [] };
   const labels = [...new Set(apiData.map(item => item.item))].sort((a, b) => parseInt(a) - parseInt(b));
   const colorMap = { Excelente: '#1D556F', Bom: '#288FB4', Regular: '#F0B775', Insuficiente: '#FA360A' };
+
   const datasets = CONCEITOS.map(conceito => ({
     label: conceito,
     data: labels.map(label => {
@@ -215,10 +284,9 @@ function formatProporcoesItensChartData(apiData) {
     }),
     backgroundColor: colorMap[conceito]
   }));
+
   return { labels, datasets };
 }
-
-const round2 = (n) => (Number.isFinite(n) ? Number(n.toFixed(2)) : n);
 
 /* ---------- Reagregadores ---------- */
 function aggregateFromRows2025(rows, qHeadersFull) {
@@ -234,6 +302,7 @@ function aggregateFromRows2025(rows, qHeadersFull) {
     if (/^n(ã|a)o se aplica/i.test(a)) return null;
     return null;
   };
+
   const toScoreVal = (ans) => {
     if (!ans) return null;
     const a = String(ans).trim();
@@ -251,37 +320,54 @@ function aggregateFromRows2025(rows, qHeadersFull) {
     'Instalações Físicas e Recursos de TI': headers.slice(35, 45)
   };
 
+  const groupedRows = groupRowsForBoxplot(rows, '2025');
+
   const dimensoes = [];
   Object.entries(dims).forEach(([dim, hs]) => {
     const counts = { Excelente: 0, Bom: 0, Regular: 0, Insuficiente: 0 };
     let total = 0;
+
     rows.forEach(r => {
       hs.forEach(h => {
         const c = toScoreKey(r[h]);
-        if (c) { counts[c]++; total++; }
+        if (c) {
+          counts[c]++;
+          total++;
+        }
       });
     });
+
     CONCEITOS.forEach(c => dimensoes.push({
-      dimensao: dim, conceito: c, valor: total ? (counts[c] / total) * 100 : 0
+      dimensao: dim,
+      conceito: c,
+      valor: total ? (counts[c] / total) * 100 : 0
     }));
   });
 
   const mediasPorDim = [];
   const boxplotDimRaw = [];
+
   Object.entries(dims).forEach(([dim, hs]) => {
-    let sum = 0, count = 0;
-    const perRespondent = [];
+    let sum = 0;
+    let count = 0;
+
     rows.forEach(r => {
       const vals = hs.map(h => toScoreVal(r[h])).filter(v => v != null);
       if (vals.length) {
-        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-        perRespondent.push(avg);
         sum += vals.reduce((a, b) => a + b, 0);
         count += vals.length;
       }
     });
+
+    const perGroup = Array.from(groupedRows.values())
+      .map(group => {
+        const vals = group.flatMap(r => hs.map(h => toScoreVal(r[h])).filter(v => v != null));
+        return meanOf(vals);
+      })
+      .filter(v => v != null);
+
     mediasPorDim.push({ dimensao: dim, media: count ? sum / count : 0 });
-    boxplotDimRaw.push({ dimensao: dim, values: perRespondent });
+    boxplotDimRaw.push({ dimensao: dim, values: perGroup });
   });
 
   const mediasForHeaders = (hs, offset) => hs.map((h, idx) => {
@@ -291,7 +377,13 @@ function aggregateFromRows2025(rows, qHeadersFull) {
   });
 
   const boxplotForHeaders = (hs, offset) => hs.map((h, idx) => {
-    const values = rows.map(r => toScoreVal(r[h])).filter(v => v != null);
+    const values = Array.from(groupedRows.values())
+      .map(group => {
+        const vals = group.map(r => toScoreVal(r[h])).filter(v => v != null);
+        return meanOf(vals);
+      })
+      .filter(v => v != null);
+
     return { item: String(offset + idx + 1), values };
   });
 
@@ -313,17 +405,23 @@ function aggregateFromRows2025(rows, qHeadersFull) {
   const makeItens = (hs, offset = 0) => hs.flatMap((h, idx) => {
     const counts = { Excelente: 0, Bom: 0, Regular: 0, Insuficiente: 0 };
     let total = 0;
+
     rows.forEach(r => {
       const c = toScoreKey(r[h]);
-      if (c) { counts[c]++; total++; }
+      if (c) {
+        counts[c]++;
+        total++;
+      }
     });
+
     const item = String(offset + idx + 1);
     return CONCEITOS.map(c => ({
-      item, conceito: c, valor: total ? (counts[c] / total) * 100 : 0
+      item,
+      conceito: c,
+      valor: total ? (counts[c] / total) * 100 : 0
     }));
   });
 
-  // Geração das tabelas de estatísticas
   const boxplotDimStats = boxplotDimRaw.map(d => calculateDescriptiveStats(d.dimensao, d.values));
   const boxplotAutoStats = boxplotItensAutoRaw.map(d => calculateDescriptiveStats(d.item, d.values));
   const boxplotAtitudeStats = boxplotItensAtitudeRaw.map(d => calculateDescriptiveStats(d.item, d.values));
@@ -351,7 +449,7 @@ function aggregateFromRows2025(rows, qHeadersFull) {
     mediasItensGestao,
     boxplotItensGestaoRaw,
     boxplotGestaoStats,
-    
+
     acaoDocenteProcesso: makeItens(headers.slice(30, 35), 30),
     mediasItensProcesso,
     boxplotItensProcessoRaw,
@@ -382,39 +480,56 @@ function aggregateFromRows2023(rows, qHeaders) {
     'Instalações Físicas e Recursos de TI': qHeaders.slice(35, endInfra)
   };
 
+  const groupedRows = groupRowsForBoxplot(rows, '2023');
+
   const dimensoes = [];
   Object.entries(dims).forEach(([dim, hs]) => {
     const counts = { Excelente: 0, Bom: 0, Regular: 0, Insuficiente: 0 };
     let total = 0;
+
     rows.forEach(r => {
       hs.forEach(h => {
         const c = toKey(Number(r[h]));
-        if (c) { counts[c]++; total++; }
+        if (c) {
+          counts[c]++;
+          total++;
+        }
       });
     });
+
     CONCEITOS.forEach(c => dimensoes.push({
-      dimensao: dim, conceito: c, valor: total ? (counts[c] / total) * 100 : 0
+      dimensao: dim,
+      conceito: c,
+      valor: total ? (counts[c] / total) * 100 : 0
     }));
   });
 
   const mediasPorDim = [];
   const boxplotDimRaw = [];
+
   Object.entries(dims).forEach(([dim, hs]) => {
-    let sum = 0, count = 0;
-    const perRespondent = [];
+    let sum = 0;
+    let count = 0;
+
     rows.forEach(r => {
       const vals = hs.map(h => toVal(r[h])).filter(v => v != null);
       if (vals.length) {
-        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-        perRespondent.push(avg);
         sum += vals.reduce((a, b) => a + b, 0);
         count += vals.length;
       }
     });
+
+    const perGroup = Array.from(groupedRows.values())
+      .map(group => {
+        const vals = group.flatMap(r => hs.map(h => toVal(r[h])).filter(v => v != null));
+        return meanOf(vals);
+      })
+      .filter(v => v != null);
+
     mediasPorDim.push({ dimensao: dim, media: count ? sum / count : 0 });
-    boxplotDimRaw.push({ dimensao: dim, values: perRespondent });
+    boxplotDimRaw.push({ dimensao: dim, values: perGroup });
   });
-  
+
   const mediasForHeaders = (hs) => hs.map((h) => {
     const vals = rows.map(r => toVal(r[h])).filter(v => v != null);
     const media = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
@@ -422,16 +537,22 @@ function aggregateFromRows2023(rows, qHeaders) {
   });
 
   const boxplotForHeaders = (hs) => hs.map((h) => {
-    const values = rows.map(r => toVal(r[h])).filter(v => v != null);
+    const values = Array.from(groupedRows.values())
+      .map(group => {
+        const vals = group.map(r => toVal(r[h])).filter(v => v != null);
+        return meanOf(vals);
+      })
+      .filter(v => v != null);
+
     return { item: h.replace(')', ''), values };
   });
-  
+
   const mediasItensAuto = mediasForHeaders(dims['Autoavaliação Discente']);
   const boxplotItensAutoRaw = boxplotForHeaders(dims['Autoavaliação Discente']);
 
   const mediasItensAtitude = mediasForHeaders(qHeaders.slice(13, Math.min(19, qHeaders.length)));
   const boxplotItensAtitudeRaw = boxplotForHeaders(qHeaders.slice(13, Math.min(19, qHeaders.length)));
-  
+
   const mediasItensGestao = mediasForHeaders(qHeaders.slice(19, Math.min(30, qHeaders.length)));
   const boxplotItensGestaoRaw = boxplotForHeaders(qHeaders.slice(19, Math.min(30, qHeaders.length)));
 
@@ -444,13 +565,20 @@ function aggregateFromRows2023(rows, qHeaders) {
   const makeItens = (hs) => hs.flatMap(h => {
     const counts = { Excelente: 0, Bom: 0, Regular: 0, Insuficiente: 0 };
     let total = 0;
+
     rows.forEach(r => {
       const c = toKey(Number(r[h]));
-      if (c) { counts[c]++; total++; }
+      if (c) {
+        counts[c]++;
+        total++;
+      }
     });
+
     const item = h.replace(')', '');
     return CONCEITOS.map(c => ({
-      item, conceito: c, valor: total ? (counts[c] / total) * 100 : 0
+      item,
+      conceito: c,
+      valor: total ? (counts[c] / total) * 100 : 0
     }));
   });
 
@@ -481,7 +609,7 @@ function aggregateFromRows2023(rows, qHeaders) {
     mediasItensGestao,
     boxplotItensGestaoRaw,
     boxplotGestaoStats,
-    
+
     acaoDocenteProcesso: makeItens(qHeaders.slice(30, Math.min(35, qHeaders.length))),
     mediasItensProcesso,
     boxplotItensProcessoRaw,
@@ -497,7 +625,9 @@ function aggregateFromRows2023(rows, qHeaders) {
 /* ---------- Cards best/worst ---------- */
 function computeBestWorstGroup(year, yearObj) {
   const rows = yearObj?.rows || [];
-  if (!rows.length) return { labelType: year === '2025' ? 'Polo' : 'Curso', best: '—', worst: '—', respondentsByGroup: {} };
+  if (!rows.length) {
+    return { labelType: year === '2025' ? 'Polo' : 'Curso', best: '—', worst: '—', respondentsByGroup: {} };
+  }
 
   if (year === '2025') {
     const headers = yearObj.qHeadersFull || [];
@@ -513,6 +643,7 @@ function computeBestWorstGroup(year, yearObj) {
       if (a.startsWith('Insuficiente')) return 1;
       return null;
     };
+
     const sums = new Map();
     const respondentSets = new Map();
 
@@ -533,14 +664,24 @@ function computeBestWorstGroup(year, yearObj) {
       });
     });
 
-    let best = '—', worst = '—', bestAvg = -Infinity, worstAvg = Infinity;
+    let best = '—';
+    let worst = '—';
+    let bestAvg = -Infinity;
+    let worstAvg = Infinity;
+
     for (const [g, { sum, count }] of sums) {
       if (!count) continue;
       const avg = sum / count;
-      if (avg > bestAvg) { bestAvg = avg; best = g; }
-      if (avg < worstAvg) { worstAvg = avg; worst = g; }
+      if (avg > bestAvg) {
+        bestAvg = avg;
+        best = g;
+      }
+      if (avg < worstAvg) {
+        worstAvg = avg;
+        worst = g;
+      }
     }
-    
+
     const respondentsByGroup = {};
     for (const [g, set] of respondentSets) {
       respondentsByGroup[g] = set.size;
@@ -548,12 +689,12 @@ function computeBestWorstGroup(year, yearObj) {
 
     return { labelType: 'Polo', best, worst, respondentsByGroup };
   } else {
-    // === 2023: usa chave de curso dinâmica ===
     const courseKey = rows[0]?.['Qual é o seu Curso?'] !== undefined ? 'Qual é o seu Curso?' : 'curso';
     const headers = getQHeadersFromRows2023(rows);
     const usedHeaders = headers.slice(0, Math.min(43, headers.length));
     const toScore = (n) => Number.isFinite(Number(n)) && Number(n) !== 5 ? Number(n) : null;
     const sums = new Map();
+
     rows.forEach(r => {
       const g = r[courseKey];
       if (!g || (typeof g === 'string' && /^qual\b/i.test(g))) return;
@@ -566,14 +707,26 @@ function computeBestWorstGroup(year, yearObj) {
         sums.set(g, curr);
       });
     });
-    let best = '—', worst = '—', bestAvg = -Infinity, worstAvg = Infinity;
+
+    let best = '—';
+    let worst = '—';
+    let bestAvg = -Infinity;
+    let worstAvg = Infinity;
+
     for (const [g, { sum, count }] of sums) {
       if (!count) continue;
       const avg = sum / count;
-      if (avg > bestAvg) { bestAvg = avg; best = g; }
-      if (avg < worstAvg) { worstAvg = avg; worst = g; }
+      if (avg > bestAvg) {
+        bestAvg = avg;
+        best = g;
+      }
+      if (avg < worstAvg) {
+        worstAvg = avg;
+        worst = g;
+      }
     }
-    return { labelType: 'Curso', best, worst, respondentsByGroup: {} }; // 2023 não tem grupo de polo
+
+    return { labelType: 'Curso', best, worst, respondentsByGroup: {} };
   }
 }
 
@@ -589,10 +742,12 @@ function buildFilterOptionsDependent(initialDataByYear, filtersOptions, selected
   const poloKey2025 = 'Qual o seu Polo de Vinculação?';
   const courseKey2023 = rows[0]?.['Qual é o seu Curso?'] !== undefined ? 'Qual é o seu Curso?' : 'curso';
   const disciplinaKeys2023 = Object.keys(rows[0] || {}).filter(k => k.startsWith('Selecione para qual disciplina'));
+
   const allCursos =
     year === '2025'
       ? uniqueSorted(rows.map(r => r?.[courseKey2025]))
       : uniqueSorted(rows.map(r => r?.[courseKey2023]));
+
   const allPolos =
     year === '2025'
       ? uniqueSorted(rows.map(r => r?.[poloKey2025]))
@@ -654,18 +809,22 @@ export default function EadDashboardClient({
 
   const searchParams = useSearchParams();
   const embedForPdf = searchParams.get('embedForPdf') === '1';
+
   const getDataForYear = (year) =>
     (initialDataByYear && initialDataByYear[year]) ? initialDataByYear[year] : initialData;
+
   const [dashboardData, setDashboardData] = useState(getDataForYear(selectedFilters.ano));
 
   useEffect(() => {
     const year = selectedFilters.ano;
     const yearData = getDataForYear(year);
     setDashboardData(yearData);
+
     const foYear = initialDataByYear?.[year]?.filtersOptionsYear || {};
     const polos = year === '2023' ? [] : sanitizeList(foYear.polos || filtersOptions.polos);
     const cursos = sanitizeList(foYear.cursos || filtersOptions.cursos);
     const disciplinas = sanitizeList(foYear.disciplinas || filtersOptions.disciplinas);
+
     setSelectedFilters(prev => ({
       ...prev,
       polo: (year === '2023' || !polos.includes(prev.polo)) ? 'todos' : prev.polo,
@@ -682,6 +841,7 @@ export default function EadDashboardClient({
 
   const filtersForUi = useMemo(() => {
     const f = buildFilterOptionsDependent(initialDataByYear, filtersOptions, selectedFilters);
+
     if (selectedFilters.disciplina !== 'todos' && !f.disciplinas.includes(selectedFilters.disciplina)) {
       setSelectedFilters(prev => ({ ...prev, disciplina: 'todos' }));
     }
@@ -691,6 +851,7 @@ export default function EadDashboardClient({
     if (selectedFilters.curso !== 'todos' && !f.cursos.includes(selectedFilters.curso)) {
       setSelectedFilters(prev => ({ ...prev, curso: 'todos' }));
     }
+
     return f;
   }, [initialDataByYear, filtersOptions, selectedFilters]);
 
@@ -720,14 +881,16 @@ export default function EadDashboardClient({
           return keys.some(k => r[k] === discSel);
         });
       }
+
       const qHeadersFull = yearObj?.qHeadersFull || [];
       const agg = aggregateFromRows2025(filtered, qHeadersFull);
+
       return {
         ...agg,
         filteredRows: filtered,
         totalRespondentes: countUniqueRespondentsByYear(year, filtered)
       };
-    } else { // 2023
+    } else {
       const courseKey = rows[0]?.['Qual é o seu Curso?'] !== undefined ? 'Qual é o seu Curso?' : 'curso';
       const disciplinaKeys = Object.keys(rows[0] || {}).filter(k => k.startsWith('Selecione para qual disciplina'));
 
@@ -739,8 +902,10 @@ export default function EadDashboardClient({
           filtered = filtered.filter(r => r.disciplina === discSel);
         }
       }
+
       const qHeaders = getQHeadersFromRows2023(filtered);
       const agg = aggregateFromRows2023(filtered, qHeaders);
+
       return {
         ...agg,
         filteredRows: filtered,
@@ -753,48 +918,66 @@ export default function EadDashboardClient({
     const mediasLabels = (recalculated.mediasPorDim || []).map(d => d.dimensao);
     const mediasValues = (recalculated.mediasPorDim || []).map(d => round2(d.media));
     const boxRaw = recalculated.boxplotDimRaw || [];
+
     const all = boxRaw.map(item =>
       buildApexBoxplotFromValues(wrapForApex(item.dimensao), item.values)
     );
+
     const boxplot_data = all.flatMap(o => o.boxplot_data);
     const outliers_data = all.flatMap(o => o.outliers_data);
 
     const processBoxplotRaw = (rawItems = []) => {
-      const sorted = [...rawItems].sort((a,b) => Number(a.item) - Number(b.item));
+      const sorted = [...rawItems].sort((a, b) => Number(a.item) - Number(b.item));
       const allBoxes = sorted.map(it => buildApexBoxplotFromValues(it.item, it.values, true));
       return {
         boxplot_data: allBoxes.flatMap(o => o.boxplot_data),
         outliers_data: allBoxes.flatMap(o => o.outliers_data)
       };
     };
-    
-    const mapMedias = (arr = []) => ({
-      labels: arr.map(i => i.item).sort((a,b) => Number(a) - Number(b)),
-      datasets: [{ label: 'Média', data: arr.map(i => round2(i.media)), backgroundColor: 'rgba(40, 143, 180, 0.7)' }]
-    });
+
+    const mapMedias = (arr = []) => {
+      const sorted = [...arr].sort((a, b) => Number(a.item) - Number(b.item));
+      return {
+        labels: sorted.map(i => i.item),
+        datasets: [{
+          label: 'Média',
+          data: sorted.map(i => round2(i.media)),
+          backgroundColor: 'rgba(40, 143, 180, 0.7)'
+        }]
+      };
+    };
 
     return {
       dimensoes: formatProporcoesChartData(recalculated.dimensoes || []),
       mediasDimensoes: {
         labels: mediasLabels.map(lbl => wrapWords(lbl)),
-        datasets: [{ label: 'Média', data: mediasValues, backgroundColor: 'rgba(40, 143, 180, 0.7)' }]
+        datasets: [{
+          label: 'Média',
+          data: mediasValues,
+          backgroundColor: 'rgba(40, 143, 180, 0.7)'
+        }]
       },
       boxplotDimApex: { boxplot_data, outliers_data },
+
       autoavaliacao: formatProporcoesItensChartData(recalculated.autoavaliacaoItens || []),
-      mediasItensAuto: mapMedias(recalculated.mediasItensAuto),
-      boxplotAutoApex: processBoxplotRaw(recalculated.boxplotItensAutoRaw),
+      mediasItensAuto: mapMedias(recalculated.mediasItensAuto || []),
+      boxplotAutoApex: processBoxplotRaw(recalculated.boxplotItensAutoRaw || []),
+
       acaoDocenteAtitude: formatProporcoesItensChartData(recalculated.acaoDocenteAtitude || []),
-      mediasItensAtitude: mapMedias(recalculated.mediasItensAtitude),
-      boxplotAtitudeApex: processBoxplotRaw(recalculated.boxplotItensAtitudeRaw),
+      mediasItensAtitude: mapMedias(recalculated.mediasItensAtitude || []),
+      boxplotAtitudeApex: processBoxplotRaw(recalculated.boxplotItensAtitudeRaw || []),
+
       acaoDocenteGestao: formatProporcoesItensChartData(recalculated.acaoDocenteGestao || []),
-      mediasItensGestao: mapMedias(recalculated.mediasItensGestao),
-      boxplotGestaoApex: processBoxplotRaw(recalculated.boxplotItensGestaoRaw),
+      mediasItensGestao: mapMedias(recalculated.mediasItensGestao || []),
+      boxplotGestaoApex: processBoxplotRaw(recalculated.boxplotItensGestaoRaw || []),
+
       acaoDocenteProcesso: formatProporcoesItensChartData(recalculated.acaoDocenteProcesso || []),
-      mediasItensProcesso: mapMedias(recalculated.mediasItensProcesso),
-      boxplotProcessoApex: processBoxplotRaw(recalculated.boxplotItensProcessoRaw),
+      mediasItensProcesso: mapMedias(recalculated.mediasItensProcesso || []),
+      boxplotProcessoApex: processBoxplotRaw(recalculated.boxplotItensProcessoRaw || []),
+
       infraestruturaItens: formatProporcoesItensChartData(recalculated.infraestruturaItens || []),
-      mediasItensInfra: mapMedias(recalculated.mediasItensInfra),
-      boxplotInfraApex: processBoxplotRaw(recalculated.boxplotItensInfraRaw),
+      mediasItensInfra: mapMedias(recalculated.mediasItensInfra || []),
+      boxplotInfraApex: processBoxplotRaw(recalculated.boxplotItensInfraRaw || []),
     };
   }, [recalculated]);
 
@@ -817,8 +1000,20 @@ export default function EadDashboardClient({
     layout: { padding: { top: 25 } },
     plugins: {
       legend: { display: false },
-      tooltip: { callbacks: { label: (c) => `${c.dataset?.label || ''}: ${Number(c.parsed?.y || 0).toFixed(2)}` } },
-      datalabels: { display: 'auto', formatter: (v) => (v > 0 ? v.toFixed(2) : ''), font: { size: 9 }, anchor: 'end', align: 'top', offset: 4, color: '#333' }
+      tooltip: {
+        callbacks: {
+          label: (c) => `${c.dataset?.label || ''}: ${Number(c.parsed?.y || 0).toFixed(2)}`
+        }
+      },
+      datalabels: {
+        display: 'auto',
+        formatter: (v) => (v > 0 ? v.toFixed(2) : ''),
+        font: { size: 9 },
+        anchor: 'end',
+        align: 'top',
+        offset: 4,
+        color: '#333'
+      }
     },
     scales: { y: { max: 100 } }
   };
@@ -841,7 +1036,15 @@ export default function EadDashboardClient({
           label: (c) => `${c.dataset?.label || ''}: ${Number(c.parsed?.y || 0).toFixed(2)}`
         }
       },
-      datalabels: { display: 'auto', formatter: v => (v > 0 ? v.toFixed(2) : ''), font: { size: 8 }, anchor: 'end', align: 'top', offset: 4, color: '#333' }
+      datalabels: {
+        display: 'auto',
+        formatter: v => (v > 0 ? v.toFixed(2) : ''),
+        font: { size: 8 },
+        anchor: 'end',
+        align: 'top',
+        offset: 4,
+        color: '#333'
+      }
     },
     scales: { y: { max: 100 } }
   };
@@ -856,23 +1059,37 @@ export default function EadDashboardClient({
         }
       }
     },
-    scales: { y: { min: 0, max: 4, ticks: { callback: (v) => Number(v).toFixed(2) } } }
+    scales: {
+      y: { min: 0, max: 4, ticks: { callback: (v) => Number(v).toFixed(2) } }
+    }
   };
 
-  const gridDimensoes = { display: 'grid', gridTemplateColumns: '1.8fr 1fr', gridAutoRows: 'minmax(360px, auto)', gap: '16px', alignItems: 'stretch' };
+  const gridDimensoes = {
+    display: 'grid',
+    gridTemplateColumns: '1.8fr 1fr',
+    gridAutoRows: 'minmax(360px, auto)',
+    gap: '16px',
+    alignItems: 'stretch'
+  };
+
   const leftBig = { gridColumn: '1 / 2', gridRow: '1 / span 2', height: 780 };
   const rightTop = { gridColumn: '2 / 3', gridRow: '1', height: 360 };
   const rightBottom = { gridColumn: '2 / 3', gridRow: '2', height: 420 };
 
-  // NOVO: Layout de 3 linhas para abas com boxplot
-  const gridThreeRows = { display: 'grid', gridTemplateColumns: '1fr', gridTemplateRows: '360px 380px 360px', gap: '12px' };
+  const gridThreeRows = {
+    display: 'grid',
+    gridTemplateColumns: '1fr',
+    gridTemplateRows: '360px 380px 360px',
+    gap: '12px'
+  };
+
   const row1 = { gridColumn: '1 / -1', gridRow: '1', height: 360 };
   const row2 = { gridColumn: '1 / -1', gridRow: '2', height: 380 };
   const row3 = { gridColumn: '1 / -1', gridRow: '3', height: 360 };
 
-  // ========= Tabela compacta que aparece SÓ no PDF (embedForPdf) =========
   const StatsTableInline = ({ id, title, rows, labelHeader = 'Item' }) => {
     if (!rows || !rows.length || !embedForPdf) return null;
+
     const th = {
       border: '1px solid #ddd',
       padding: '4px 6px',
@@ -882,6 +1099,7 @@ export default function EadDashboardClient({
       fontSize: 11,
       whiteSpace: 'nowrap',
     };
+
     const td = {
       border: '1px solid #eee',
       padding: '3px 6px',
@@ -889,6 +1107,7 @@ export default function EadDashboardClient({
       fontSize: 11,
       whiteSpace: 'nowrap',
     };
+
     const tdNum = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 
     return (
@@ -925,7 +1144,6 @@ export default function EadDashboardClient({
       </div>
     );
   };
-  // ================== FIM da tabela inline ==================
 
   return (
     <>
@@ -942,7 +1160,11 @@ export default function EadDashboardClient({
       <div>
         <div className={styles.tabsContainer}>
           {tabs.map(tab => (
-            <button key={tab.key} className={activeTab === tab.key ? styles.activeTab : styles.tab} onClick={() => setActiveTab(tab.key)}>
+            <button
+              key={tab.key}
+              className={activeTab === tab.key ? styles.activeTab : styles.tab}
+              onClick={() => setActiveTab(tab.key)}
+            >
               {tab.label}
             </button>
           ))}
@@ -952,20 +1174,33 @@ export default function EadDashboardClient({
           {(embedForPdf || activeTab === 'dimensoes') && (
             <div style={gridDimensoes}>
               <div id="chart-dimensoes" className={styles.chartContainer} style={leftBig}>
-                <ActivityChart chartData={chartData.dimensoes} title={`Proporções de Respostas por Dimensão (${selectedFilters.ano})`} customOptions={dimensoesOptions} />
+                <ActivityChart
+                  chartData={chartData.dimensoes}
+                  title={`Proporções de Respostas por Dimensão (${selectedFilters.ano})`}
+                  customOptions={dimensoesOptions}
+                />
               </div>
+
               <div id="chart-medias-dimensoes" className={styles.chartContainer} style={rightTop}>
-                <ActivityChart chartData={chartData.mediasDimensoes} title={`Médias por Dimensão (${selectedFilters.ano})`} customOptions={mediasOptions} />
+                <ActivityChart
+                  chartData={chartData.mediasDimensoes}
+                  title={`Médias por Dimensão (${selectedFilters.ano})`}
+                  customOptions={mediasOptions}
+                />
               </div>
+
               <div
                 id="chart-boxplot-dimensoes"
                 className={styles.chartContainer}
                 style={{ ...rightBottom, display: 'flex', flexDirection: 'column' }}
               >
                 <div style={{ flex: '1 1 auto', minHeight: 270 }}>
-                  <BoxplotChart apiData={chartData.boxplotDimApex} title={`Boxplot das Médias por Dimensão (${selectedFilters.ano})`} />
+                  <BoxplotChart
+                    apiData={chartData.boxplotDimApex}
+                    title={`Boxplot das Médias por Dimensão (${selectedFilters.ano})`}
+                  />
                 </div>
-                {/* tabela só no PDF */}
+
                 <StatsTableInline
                   id="table-stats-dimensoes"
                   title="Estatísticas — Dimensões"
@@ -979,24 +1214,38 @@ export default function EadDashboardClient({
           {(embedForPdf || activeTab === 'autoavaliacao') && (
             <div style={gridThreeRows}>
               <div id="chart-proporcoes-autoav" className={styles.chartContainer} style={row1}>
-                <ActivityChart chartData={chartData.autoavaliacao} title={`Proporções de Respostas por Item - Autoavaliação Discente (${selectedFilters.ano})`} customOptions={proporcoesItensOptions} />
+                <ActivityChart
+                  chartData={chartData.autoavaliacao}
+                  title={`Proporções de Respostas por Item - Autoavaliação Discente (${selectedFilters.ano})`}
+                  customOptions={proporcoesItensOptions}
+                />
               </div>
+
               <div
                 id="chart-boxplot-autoav"
                 className={styles.chartContainer}
                 style={{ ...row2, display: 'flex', flexDirection: 'column' }}
               >
                 <div style={{ flex: '1 1 auto', minHeight: 250 }}>
-                  <BoxplotChart apiData={chartData.boxplotAutoApex} title="Boxplot das Médias por Item (Autoavaliação)" />
+                  <BoxplotChart
+                    apiData={chartData.boxplotAutoApex}
+                    title="Boxplot das Médias por Item (Autoavaliação)"
+                  />
                 </div>
+
                 <StatsTableInline
                   id="table-stats-autoav"
                   title="Estatísticas — Autoavaliação"
                   rows={recalculated.boxplotAutoStats}
                 />
               </div>
+
               <div id="chart-medias-itens-autoav" className={styles.chartContainer} style={row3}>
-                <ActivityChart chartData={chartData.mediasItensAuto} title={`Médias dos Itens relacionados à Autoavaliação Discente (${selectedFilters.ano})`} customOptions={mediasItensOptions} />
+                <ActivityChart
+                  chartData={chartData.mediasItensAuto}
+                  title={`Médias dos Itens relacionados à Autoavaliação Discente (${selectedFilters.ano})`}
+                  customOptions={mediasItensOptions}
+                />
               </div>
             </div>
           )}
@@ -1004,24 +1253,38 @@ export default function EadDashboardClient({
           {(embedForPdf || activeTab === 'atitude') && (
             <div style={gridThreeRows}>
               <div id="chart-proporcoes-atitude" className={styles.chartContainer} style={row1}>
-                <ActivityChart chartData={chartData.acaoDocenteAtitude} title={`Proporções de Respostas por Item - Atitude Profissional (${selectedFilters.ano})`} customOptions={proporcoesItensOptions} />
+                <ActivityChart
+                  chartData={chartData.acaoDocenteAtitude}
+                  title={`Proporções de Respostas por Item - Atitude Profissional (${selectedFilters.ano})`}
+                  customOptions={proporcoesItensOptions}
+                />
               </div>
+
               <div
                 id="chart-boxplot-atitude"
                 className={styles.chartContainer}
                 style={{ ...row2, display: 'flex', flexDirection: 'column' }}
               >
                 <div style={{ flex: '1 1 auto', minHeight: 250 }}>
-                  <BoxplotChart apiData={chartData.boxplotAtitudeApex} title="Boxplot das Médias por Item (Atitude Profissional)" />
+                  <BoxplotChart
+                    apiData={chartData.boxplotAtitudeApex}
+                    title="Boxplot das Médias por Item (Atitude Profissional)"
+                  />
                 </div>
+
                 <StatsTableInline
                   id="table-stats-atitude"
                   title="Estatísticas — Atitude Profissional"
                   rows={recalculated.boxplotAtitudeStats}
                 />
               </div>
+
               <div id="chart-medias-atitude" className={styles.chartContainer} style={row3}>
-                <ActivityChart chartData={chartData.mediasItensAtitude} title={`Médias dos Itens relacionados à Atitude Profissional (Discente)`} customOptions={mediasItensOptions} />
+                <ActivityChart
+                  chartData={chartData.mediasItensAtitude}
+                  title="Médias dos Itens relacionados à Atitude Profissional (Discente)"
+                  customOptions={mediasItensOptions}
+                />
               </div>
             </div>
           )}
@@ -1029,24 +1292,38 @@ export default function EadDashboardClient({
           {(embedForPdf || activeTab === 'gestao') && (
             <div style={gridThreeRows}>
               <div id="chart-proporcoes-gestao" className={styles.chartContainer} style={row1}>
-                <ActivityChart chartData={chartData.acaoDocenteGestao} title={`Proporções de Respostas por Item - Gestão Didática (${selectedFilters.ano})`} customOptions={proporcoesItensOptions} />
+                <ActivityChart
+                  chartData={chartData.acaoDocenteGestao}
+                  title={`Proporções de Respostas por Item - Gestão Didática (${selectedFilters.ano})`}
+                  customOptions={proporcoesItensOptions}
+                />
               </div>
+
               <div
                 id="chart-boxplot-gestao"
                 className={styles.chartContainer}
                 style={{ ...row2, display: 'flex', flexDirection: 'column' }}
               >
                 <div style={{ flex: '1 1 auto', minHeight: 250 }}>
-                  <BoxplotChart apiData={chartData.boxplotGestaoApex} title="Boxplot das Médias por Item (Gestão Didática)" />
+                  <BoxplotChart
+                    apiData={chartData.boxplotGestaoApex}
+                    title="Boxplot das Médias por Item (Gestão Didática)"
+                  />
                 </div>
+
                 <StatsTableInline
                   id="table-stats-gestao"
                   title="Estatísticas — Gestão Didática"
                   rows={recalculated.boxplotGestaoStats}
                 />
               </div>
+
               <div id="chart-medias-gestao" className={styles.chartContainer} style={row3}>
-                <ActivityChart chartData={chartData.mediasItensGestao} title={`Médias dos Itens relacionados à Gestão Didática (Discente)`} customOptions={mediasItensOptions} />
+                <ActivityChart
+                  chartData={chartData.mediasItensGestao}
+                  title="Médias dos Itens relacionados à Gestão Didática (Discente)"
+                  customOptions={mediasItensOptions}
+                />
               </div>
             </div>
           )}
@@ -1054,24 +1331,38 @@ export default function EadDashboardClient({
           {(embedForPdf || activeTab === 'processo') && (
             <div style={gridThreeRows}>
               <div id="chart-proporcoes-processo" className={styles.chartContainer} style={row1}>
-                <ActivityChart chartData={chartData.acaoDocenteProcesso} title={`Proporções de Respostas por Item - Processo Avaliativo (${selectedFilters.ano})`} customOptions={proporcoesItensOptions} />
+                <ActivityChart
+                  chartData={chartData.acaoDocenteProcesso}
+                  title={`Proporções de Respostas por Item - Processo Avaliativo (${selectedFilters.ano})`}
+                  customOptions={proporcoesItensOptions}
+                />
               </div>
+
               <div
                 id="chart-boxplot-processo"
                 className={styles.chartContainer}
                 style={{ ...row2, display: 'flex', flexDirection: 'column' }}
               >
                 <div style={{ flex: '1 1 auto', minHeight: 250 }}>
-                  <BoxplotChart apiData={chartData.boxplotProcessoApex} title="Boxplot das Médias por Item (Processo Avaliativo)" />
+                  <BoxplotChart
+                    apiData={chartData.boxplotProcessoApex}
+                    title="Boxplot das Médias por Item (Processo Avaliativo)"
+                  />
                 </div>
+
                 <StatsTableInline
                   id="table-stats-processo"
                   title="Estatísticas — Processo Avaliativo"
                   rows={recalculated.boxplotProcessoStats}
                 />
               </div>
+
               <div id="chart-medias-processo" className={styles.chartContainer} style={row3}>
-                <ActivityChart chartData={chartData.mediasItensProcesso} title={`Médias dos Itens relacionados ao Processo Avaliativo (Discente)`} customOptions={mediasItensOptions} />
+                <ActivityChart
+                  chartData={chartData.mediasItensProcesso}
+                  title="Médias dos Itens relacionados ao Processo Avaliativo (Discente)"
+                  customOptions={mediasItensOptions}
+                />
               </div>
             </div>
           )}
@@ -1079,32 +1370,43 @@ export default function EadDashboardClient({
           {(embedForPdf || activeTab === 'infraestrutura') && (
             <div style={gridThreeRows}>
               <div id="chart-proporcoes-infra" className={styles.chartContainer} style={row1}>
-                <ActivityChart chartData={chartData.infraestruturaItens} title={`Proporções de Respostas por Item - Instalações Físicas e Recursos de TI (${selectedFilters.ano})`} customOptions={proporcoesItensOptions} />
+                <ActivityChart
+                  chartData={chartData.infraestruturaItens}
+                  title={`Proporções de Respostas por Item - Instalações Físicas e Recursos de TI (${selectedFilters.ano})`}
+                  customOptions={proporcoesItensOptions}
+                />
               </div>
+
               <div
                 id="chart-boxplot-infra"
                 className={styles.chartContainer}
                 style={{ ...row2, display: 'flex', flexDirection: 'column' }}
               >
                 <div style={{ flex: '1 1 auto', minHeight: 250 }}>
-                  <BoxplotChart apiData={chartData.boxplotInfraApex} title="Boxplot das Médias por Item (Instalações e TI)" />
+                  <BoxplotChart
+                    apiData={chartData.boxplotInfraApex}
+                    title="Boxplot das Médias por Item (Instalações e TI)"
+                  />
                 </div>
+
                 <StatsTableInline
                   id="table-stats-infra"
                   title="Estatísticas — Instalações e TI"
                   rows={recalculated.boxplotInfraStats}
                 />
               </div>
+
               <div id="chart-medias-infra" className={styles.chartContainer} style={row3}>
-                <ActivityChart chartData={chartData.mediasItensInfra} title={`Médias dos Itens relacionados às Instalações Físicas e Recursos de TI (Discente)`} customOptions={mediasItensOptions} />
+                <ActivityChart
+                  chartData={chartData.mediasItensInfra}
+                  title="Médias dos Itens relacionados às Instalações Físicas e Recursos de TI (Discente)"
+                  customOptions={mediasItensOptions}
+                />
               </div>
             </div>
           )}
         </div>
       </div>
-
-      {/* Sem tabelas invisíveis: agora elas já ficam logo abaixo dos boxplots,
-          mas só aparecem quando embedForPdf=1 (no PDF). */}
     </>
   );
 }
