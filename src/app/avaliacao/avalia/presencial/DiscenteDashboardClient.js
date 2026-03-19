@@ -51,6 +51,21 @@ const make = (endpoint, filters = {}) => {
   return `/api/dashboard-cache?${qs.toString()}`;
 };
 
+const makeCampusFilters = (ano) => {
+  const qs = new URLSearchParams();
+  qs.set('endpoint', '/filters/campus');
+  qs.set('ano', String(ano).trim());
+  return `/api/dashboard-cache?${qs.toString()}`;
+};
+
+const makeCourseFilters = (ano, campus) => {
+  const qs = new URLSearchParams();
+  qs.set('endpoint', '/filters/cursos');
+  qs.set('ano', String(ano).trim());
+  qs.set('campus', normalizeFilterValue(campus, 'todos'));
+  return `/api/dashboard-cache?${qs.toString()}`;
+};
+
 // ======================================================
 // LIMITADOR GLOBAL DE CONCORRÊNCIA (2–3 simultâneos)
 // ======================================================
@@ -943,6 +958,10 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
 
   const [rankingLoading, setRankingLoading] = useState({});
   const [loadedRankings, setLoadedRankings] = useState({});
+  const [filtersLoading, setFiltersLoading] = useState({
+    campus: false,
+    curso: false,
+  });
 
   const hasSelectedYear = Boolean(selectedFilters.ano);
   const hasSelectedCampus = Boolean(selectedFilters.campus);
@@ -969,6 +988,10 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
   }, [activeTab, hasRequiredFilters, isDimensionMode, selectedDimension]);
 
   useEffect(() => {
+    if ((filtersOptions?.anos?.length ?? 0) > 0) {
+      return;
+    }
+
     const controller = new AbortController();
 
     const loadInitialFilters = async () => {
@@ -1003,7 +1026,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     loadInitialFilters();
 
     return () => controller.abort();
-  }, []);
+  }, [filtersOptions?.anos]);
 
   useEffect(() => {
     if (!selectedFilters.ano) {
@@ -1012,24 +1035,22 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
         campus: [],
         cursos: [],
       }));
+      setFiltersLoading({ campus: false, curso: false });
       return;
     }
 
     const controller = new AbortController();
 
-    const loadYearFilters = async () => {
+    const loadCampus = async () => {
       try {
-        const res = await fetch(
-          make('/filters', {
-            ano: selectedFilters.ano,
-            campus: selectedFilters.campus,
-            curso: selectedFilters.curso,
-          }),
-          { signal: controller.signal }
-        );
+        setFiltersLoading((prev) => ({ ...prev, campus: true }));
+
+        const res = await fetch(makeCampusFilters(selectedFilters.ano), {
+          signal: controller.signal,
+        });
 
         if (!res.ok) {
-          throw new Error('Falha ao carregar filtros do ano selecionado');
+          throw new Error('Falha ao carregar campi');
         }
 
         const data = await res.json();
@@ -1043,18 +1064,74 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
           ],
           anos: data?.anos ?? prev.anos ?? [],
           campus: data?.campus ?? [],
+          cursos: [],
+        }));
+
+        setSelectedFilters((prev) => ({
+          ...prev,
+          campus: '',
+          curso: '',
+        }));
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+        setError(err?.message ?? 'Erro ao carregar campi');
+      } finally {
+        if (!controller.signal.aborted) {
+          setFiltersLoading((prev) => ({ ...prev, campus: false }));
+        }
+      }
+    };
+
+    loadCampus();
+
+    return () => controller.abort();
+  }, [selectedFilters.ano]);
+
+  useEffect(() => {
+    if (!selectedFilters.ano || !selectedFilters.campus) {
+      setDynamicFilters((prev) => ({
+        ...prev,
+        cursos: [],
+      }));
+      setFiltersLoading((prev) => ({ ...prev, curso: false }));
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadCourses = async () => {
+      try {
+        setFiltersLoading((prev) => ({ ...prev, curso: true }));
+
+        const res = await fetch(
+          makeCourseFilters(selectedFilters.ano, selectedFilters.campus),
+          { signal: controller.signal }
+        );
+
+        if (!res.ok) {
+          throw new Error('Falha ao carregar cursos');
+        }
+
+        const data = await res.json();
+
+        setDynamicFilters((prev) => ({
+          ...prev,
           cursos: data?.cursos ?? [],
         }));
       } catch (err) {
         if (err?.name === 'AbortError') return;
-        setError(err?.message ?? 'Erro ao carregar filtros');
+        setError(err?.message ?? 'Erro ao carregar cursos');
+      } finally {
+        if (!controller.signal.aborted) {
+          setFiltersLoading((prev) => ({ ...prev, curso: false }));
+        }
       }
     };
 
-    loadYearFilters();
+    loadCourses();
 
     return () => controller.abort();
-  }, [selectedFilters.ano, selectedFilters.campus, selectedFilters.curso]);
+  }, [selectedFilters.ano, selectedFilters.campus]);
 
   useEffect(() => {
     if (!hasRequiredFilters) {
@@ -1991,6 +2068,8 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                 onFilterChange={handleFilterChange}
                 showRanking={showRanking}
                 onToggleRanking={() => setShowRanking((prev) => !prev)}
+                loadingCampus={filtersLoading.campus}
+                loadingCurso={filtersLoading.curso}
               />
             </div>
 

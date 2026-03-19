@@ -120,7 +120,7 @@ export default function ReportViewer({
           </div>
 
           <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
-            Por favor, aguarde. A página ficará bloqueada até a conclusão.
+            Por favor, aguarde e não saia desta tela. A página ficará bloqueada até a conclusão.
           </div>
         </div>
       )}

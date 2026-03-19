@@ -12,14 +12,14 @@ export default function DiscenteFilters({
   onToggleRanking = () => {},
   showDimensionFilter = true,
   showRankingToggle = true,
+  loadingCampus = false,
+  loadingCurso = false,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const { campus, cursos, anos, dimensoes } = filters;
   const hasYearSelected = Boolean(selectedFilters?.ano);
   const campusOptions = Array.isArray(campus) ? campus : [];
   const cursoOptions = Array.isArray(cursos) ? cursos : [];
-  const campusReady = hasYearSelected && campusOptions.length > 0;
-  const cursoReady = hasYearSelected && Boolean(selectedFilters?.campus) && cursoOptions.length > 0;
 
   return (
     <div className={styles.filtersWrapper}>
@@ -35,21 +35,36 @@ export default function DiscenteFilters({
 
       <div className={`${styles.filtersContent} ${isOpen ? styles.open : ''}`}>
         <select
-          disabled={!hasYearSelected}
+          name="ano"
+          value={selectedFilters.ano}
+          onChange={onFilterChange}
+          className={styles.filterSelect}
+        >
+          <option value="" disabled hidden>
+            Escolha um ano
+          </option>
+          {anos?.map((a, i) => (
+            <option key={`ano-${a}-${i}`} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+
+        <select
+          disabled={!hasYearSelected || loadingCampus}
           name="campus"
           value={selectedFilters.campus ?? ''}
           onChange={onFilterChange}
           className={styles.filterSelect}
         >
           <option value="" disabled>
-            {hasYearSelected ? 'Selecione o campus' : 'Selecione o ano primeiro'}
+            {hasYearSelected
+              ? loadingCampus
+                ? 'Carregando campi...'
+                : 'Selecione o campus'
+              : 'Selecione o ano primeiro'}
           </option>
-          {!campusReady && hasYearSelected ? (
-            <option value="" disabled>
-              Carregando campi...
-            </option>
-          ) : null}
-          {campusReady ? <option value="todos">Todos os Campi</option> : null}
+          {!loadingCampus ? <option value="todos">Todos os Campi</option> : null}
           {campusOptions.map((c, i) => (
             <option key={`campus-${c}-${i}`} value={c}>
               {c}
@@ -58,7 +73,7 @@ export default function DiscenteFilters({
         </select>
 
         <select
-          disabled={!hasYearSelected || !selectedFilters?.campus}
+          disabled={!hasYearSelected || !selectedFilters?.campus || loadingCurso}
           name="curso"
           value={selectedFilters.curso ?? ''}
           onChange={onFilterChange}
@@ -69,14 +84,13 @@ export default function DiscenteFilters({
               ? 'Selecione o ano primeiro'
               : !selectedFilters?.campus
                 ? 'Selecione o campus primeiro'
-                : 'Selecione o curso'}
+                : loadingCurso
+                  ? 'Carregando cursos...'
+                  : 'Selecione o curso'}
           </option>
-          {!cursoReady && hasYearSelected && selectedFilters?.campus ? (
-            <option value="" disabled>
-              Carregando cursos...
-            </option>
+          {!loadingCurso && selectedFilters?.campus ? (
+            <option value="todos">Todos os Cursos</option>
           ) : null}
-          {cursoReady ? <option value="todos">Todos os Cursos</option> : null}
           {cursoOptions.map((c, i) => (
             <option key={`curso-${c}-${i}`} value={c}>
               {c}
@@ -99,22 +113,6 @@ export default function DiscenteFilters({
             ))}
           </select>
         )}
-
-        <select
-          name="ano"
-          value={selectedFilters.ano}
-          onChange={onFilterChange}
-          className={styles.filterSelect}
-        >
-          <option value="" disabled hidden>
-            Escolha um ano
-          </option>
-          {anos?.map((a, i) => (
-            <option key={`ano-${a}-${i}`} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
 
         {showRankingToggle && (
           <label

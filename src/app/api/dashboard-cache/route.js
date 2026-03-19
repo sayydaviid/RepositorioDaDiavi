@@ -52,6 +52,10 @@ function buildHfUrl(endpoint, ano, campus, curso) {
   if (endpoint === '/filters') {
     if (campus && campus !== 'todos') qs.set('campus', campus);
     if (curso && curso !== 'todos') qs.set('curso', curso);
+  } else if (endpoint === '/filters/campus') {
+    if (campus && campus !== 'todos') qs.set('campus', campus);
+  } else if (endpoint === '/filters/cursos') {
+    if (campus && campus !== 'todos') qs.set('campus', campus);
   } else {
     if (campus) qs.set('campus', campus);
     if (curso) qs.set('curso', curso);
@@ -86,9 +90,27 @@ function getUpstreamTimeout(endpoint) {
 
 function getRetryCount(endpoint) {
   if (endpoint === '/filters') return 2;
+  if (endpoint === '/filters/campus' || endpoint === '/filters/cursos') return 2;
   if (endpoint === '/discente/geral/summary') return 2;
   if (endpoint.includes('/boxplot')) return 1;
   return 1;
+}
+
+function uniqueSortedStrings(values = []) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+function toCampusFiltersPayload(rawData) {
+  const anos = uniqueSortedStrings(rawData?.anos);
+  const campus = uniqueSortedStrings(rawData?.campus);
+  return { anos, campus };
+}
+
+function toCourseFiltersPayload(rawData) {
+  const cursos = uniqueSortedStrings(rawData?.cursos);
+  return { cursos };
 }
 
 function shouldBypassCache(endpoint) {
@@ -240,6 +262,31 @@ async function fetchFromUpstreamDeduped({ endpoint, ano, campus, curso, hfUrl, r
     );
 
     if (!hfRes.ok) {
+      if (
+        (endpoint === '/filters/campus' || endpoint === '/filters/cursos') &&
+        (hfRes.status === 404 || hfRes.status === 405)
+      ) {
+        const fallbackUrl = buildHfUrl('/filters', ano, campus, curso);
+        const fallbackRes = await fetchJsonWithRetry(
+          fallbackUrl,
+          getUpstreamTimeout('/filters'),
+          getRetryCount('/filters')
+        );
+
+        if (!fallbackRes.ok) {
+          const fallbackText = await fallbackRes.text().catch(() => '');
+          const fallbackError = new Error('Falha ao buscar dados da API de origem.');
+          fallbackError.status = fallbackRes.status;
+          fallbackError.details = fallbackText;
+          throw fallbackError;
+        }
+
+        const fallbackJson = await fallbackRes.json();
+        return endpoint === '/filters/campus'
+          ? toCampusFiltersPayload(fallbackJson)
+          : toCourseFiltersPayload(fallbackJson);
+      }
+
       const text = await hfRes.text().catch(() => '');
 
       console.error(
@@ -255,7 +302,17 @@ async function fetchFromUpstreamDeduped({ endpoint, ano, campus, curso, hfUrl, r
     }
 
     try {
-      return await hfRes.json();
+      const data = await hfRes.json();
+
+      if (endpoint === '/filters/campus') {
+        return toCampusFiltersPayload(data);
+      }
+
+      if (endpoint === '/filters/cursos') {
+        return toCourseFiltersPayload(data);
+      }
+
+      return data;
     } catch (jsonError) {
       console.error(
         `[dashboard-cache][${requestId}] invalid JSON from HF:`,

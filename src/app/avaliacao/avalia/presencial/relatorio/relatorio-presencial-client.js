@@ -1080,23 +1080,64 @@ export default function RelatorioPresencialClient({
 
     const controller = new AbortController();
 
-    const loadYearFilters = async () => {
+    const loadCampus = async () => {
       try {
-        const res = await fetch(make('/filters', selected), { signal: controller.signal, cache: 'no-store' });
-        if (!res.ok) throw new Error('Falha ao carregar filtros');
+        const res = await fetch(
+          make('/filters', { ano: selected.ano }),
+          { signal: controller.signal, cache: 'no-store' }
+        );
+        if (!res.ok) throw new Error('Falha ao carregar campi');
         const data = await res.json();
 
         setDynamicFilters((prev) => ({
           ...prev,
+          anos: data?.anos || data?.ano || prev.anos,
           campus: data?.campus || data?.campi || [],
+          cursos: [],
+        }));
+      } catch {}
+    };
+
+    loadCampus();
+    return () => controller.abort();
+  }, [selected.ano]);
+
+  useEffect(() => {
+    if (!selected.ano || !selected.campus) {
+      setDynamicFilters((prev) => ({
+        ...prev,
+        cursos: [],
+      }));
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadCursos = async () => {
+      try {
+        const res = await fetch(
+          make('/filters', {
+            ano: selected.ano,
+            campus: selected.campus,
+          }),
+          { signal: controller.signal, cache: 'no-store' }
+        );
+
+        if (!res.ok) throw new Error('Falha ao carregar cursos');
+
+        const data = await res.json();
+
+        setDynamicFilters((prev) => ({
+          ...prev,
           cursos: data?.cursos || data?.curso || [],
         }));
       } catch {}
     };
 
-    loadYearFilters();
+    loadCursos();
+
     return () => controller.abort();
-  }, [selected.ano, selected.campus, selected.curso]);
+  }, [selected.ano, selected.campus]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -1152,6 +1193,19 @@ export default function RelatorioPresencialClient({
       next = { ano: value, campus: '', curso: '' };
     } else if (name === 'campus') {
       next = { ...selected, campus: value, curso: '' };
+    }
+
+    const hasAllFilters = Boolean(next.ano && next.campus && next.curso);
+
+    if (hasAllFilters) {
+      setBlocking(true);
+      setIsGeneratingPreview(true);
+      setProgress((prev) => (prev > 0 ? prev : 1));
+      setProgressText('Iniciando geração do relatório. Não saia desta tela.');
+    } else {
+      setBlocking(false);
+      setProgress(0);
+      setProgressText('Preparando…');
     }
 
     setSelected(next);
