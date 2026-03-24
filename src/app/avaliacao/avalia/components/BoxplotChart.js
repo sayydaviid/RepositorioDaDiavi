@@ -16,6 +16,14 @@ const MAX_OUTLIERS_DRAWN = 1500;
 const BIN_COUNT = 6;
 const MAX_LABEL_CATS = 80;
 const MAX_TICK_AMOUNT = 40;
+const SCORE_MIN = 1;
+const SCORE_MAX = 4;
+
+function clampScore(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return NaN;
+  return Math.min(SCORE_MAX, Math.max(SCORE_MIN, num));
+}
 
 /**
  * ApexCharts boxPlot:
@@ -24,7 +32,7 @@ const MAX_TICK_AMOUNT = 40;
 function sanitizeBox5(y) {
   if (!Array.isArray(y) || y.length < 5) return y;
 
-  let [min, q1, med, q3, max] = y.map((v) => (Number.isFinite(+v) ? +v : NaN));
+  let [min, q1, med, q3, max] = y.map((v) => clampScore(v));
   if (![min, q1, med, q3, max].every(Number.isFinite)) return y;
 
   if (min > max) [min, max] = [max, min];
@@ -41,8 +49,8 @@ function sanitizeBox5(y) {
   const iqr0 = q3 - q1;
   if (iqr0 < MIN_BOX_HEIGHT) {
     const half = MIN_BOX_HEIGHT / 2;
-    q1 = Math.max(1.0, med - half);
-    q3 = Math.min(4.5, med + half);
+    q1 = Math.max(SCORE_MIN, med - half);
+    q3 = Math.min(SCORE_MAX, med + half);
   }
 
   const iqr = q3 - q1;
@@ -134,8 +142,8 @@ export default React.memo(function BoxplotChart({ apiData, title, customOptions 
       
       // Captura os extremos verdadeiros caso eles fujam das fences do boxplot
       if (Array.isArray(d.y) && d.y.length >= 5) {
-        origMin = Number(d.y[0]);
-        origMax = Number(d.y[4]);
+        origMin = clampScore(d.y[0]);
+        origMax = clampScore(d.y[4]);
       }
 
       return {
@@ -199,7 +207,7 @@ export default React.memo(function BoxplotChart({ apiData, title, customOptions 
     for (let i = 0; i < raw.length; i += stepRaw) {
       const p = raw[i];
       const f = fencesByCat.get(p.x);
-      const yv = +p.y;
+      const yv = clampScore(p.y);
       if (!f || !Number.isFinite(yv)) continue;
 
       let dist = 0;
@@ -429,8 +437,8 @@ export default React.memo(function BoxplotChart({ apiData, title, customOptions 
       },
 
       yaxis: {
-        min: 1,
-        max: 4.5,
+        min: SCORE_MIN,
+        max: SCORE_MAX,
         tickAmount: 7,
         labels: {
           style: { colors: '#64748B' },
@@ -453,8 +461,14 @@ export default React.memo(function BoxplotChart({ apiData, title, customOptions 
             // TOOLTIP: Garante que os números mostrados sejam idênticos aos da Tabela Descritiva.
             const dataItem = w.config.series[0].data[dataPointIndex];
             const stats = dataItem.y;
-            const oMin = dataItem.origMin !== null && dataItem.origMin !== undefined ? Number(dataItem.origMin).toFixed(2) : stats[0];
-            const oMax = dataItem.origMax !== null && dataItem.origMax !== undefined ? Number(dataItem.origMax).toFixed(2) : stats[4];
+            const oMin =
+              dataItem.origMin !== null && dataItem.origMin !== undefined
+                ? clampScore(dataItem.origMin).toFixed(2)
+                : Number(clampScore(stats[0])).toFixed(2);
+            const oMax =
+              dataItem.origMax !== null && dataItem.origMax !== undefined
+                ? clampScore(dataItem.origMax).toFixed(2)
+                : Number(clampScore(stats[4])).toFixed(2);
             
             const item = categories[dataPointIndex] ?? '';
             return `
@@ -462,9 +476,9 @@ export default React.memo(function BoxplotChart({ apiData, title, customOptions 
                 <div style="font-weight: 700; color: #1E293B">Item: ${item}</div>
                 <div style="font-size: 12px; color: #64748B;">
                   <div>MAX.: <b>${oMax}</b></div>
-                  <div>Q3: <b>${stats[3]}</b></div>
-                  <div>Mediana: <b>${stats[2]}</b></div>
-                  <div>Q1: <b>${stats[1]}</b></div>
+                  <div>Q3: <b>${Number(clampScore(stats[3])).toFixed(2)}</b></div>
+                  <div>Mediana: <b>${Number(clampScore(stats[2])).toFixed(2)}</b></div>
+                  <div>Q1: <b>${Number(clampScore(stats[1])).toFixed(2)}</b></div>
                   <div>MIN.: <b>${oMin}</b></div>
                 </div>
               </div>`;
@@ -553,18 +567,27 @@ export default React.memo(function BoxplotChart({ apiData, title, customOptions 
   ]);
 
   return (
-    <div
-      ref={wrapperRef}
-      style={{
-        width: '100%',
-        height: '350px',
-        touchAction: 'none',
-      }}
-      onWheelCapture={(e) => {
-        e.preventDefault();
-      }}
-    >
-      <Chart options={options} series={series} type="boxPlot" height={350} />
-    </div>
+    <>
+      <div
+        ref={wrapperRef}
+        className="boxplot-chart-wrapper"
+        style={{
+          width: '100%',
+          height: '350px',
+          touchAction: 'none',
+        }}
+        onWheelCapture={(e) => {
+          e.preventDefault();
+        }}
+      >
+        <Chart options={options} series={series} type="boxPlot" height={350} />
+      </div>
+
+      <style jsx global>{`
+        .boxplot-chart-wrapper .apexcharts-gridlines-horizontal line:first-child {
+          display: none;
+        }
+      `}</style>
+    </>
   );
 });

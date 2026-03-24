@@ -1064,6 +1064,13 @@ export default function EadDashboardClient({
     }
   };
 
+  const boxplotPdfOptions = embedForPdf
+    ? {
+        title: { text: '' },
+        yaxis: { max: 4, tickAmount: 7 },
+      }
+    : undefined;
+
   const gridDimensoes = {
     display: 'grid',
     gridTemplateColumns: '1.8fr 1fr',
@@ -1198,6 +1205,7 @@ export default function EadDashboardClient({
                   <BoxplotChart
                     apiData={chartData.boxplotDimApex}
                     title={`Boxplot das Médias por Dimensão (${selectedFilters.ano})`}
+                    customOptions={boxplotPdfOptions}
                   />
                 </div>
 
@@ -1230,6 +1238,7 @@ export default function EadDashboardClient({
                   <BoxplotChart
                     apiData={chartData.boxplotAutoApex}
                     title="Boxplot das Médias por Item (Autoavaliação)"
+                    customOptions={boxplotPdfOptions}
                   />
                 </div>
 
@@ -1269,6 +1278,7 @@ export default function EadDashboardClient({
                   <BoxplotChart
                     apiData={chartData.boxplotAtitudeApex}
                     title="Boxplot das Médias por Item (Atitude Profissional)"
+                    customOptions={boxplotPdfOptions}
                   />
                 </div>
 
@@ -1308,6 +1318,7 @@ export default function EadDashboardClient({
                   <BoxplotChart
                     apiData={chartData.boxplotGestaoApex}
                     title="Boxplot das Médias por Item (Gestão Didática)"
+                    customOptions={boxplotPdfOptions}
                   />
                 </div>
 
@@ -1347,6 +1358,7 @@ export default function EadDashboardClient({
                   <BoxplotChart
                     apiData={chartData.boxplotProcessoApex}
                     title="Boxplot das Médias por Item (Processo Avaliativo)"
+                    customOptions={boxplotPdfOptions}
                   />
                 </div>
 
@@ -1386,6 +1398,7 @@ export default function EadDashboardClient({
                   <BoxplotChart
                     apiData={chartData.boxplotInfraApex}
                     title="Boxplot das Médias por Item (Instalações e TI)"
+                    customOptions={boxplotPdfOptions}
                   />
                 </div>
 

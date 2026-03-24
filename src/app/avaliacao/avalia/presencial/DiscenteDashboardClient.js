@@ -2068,6 +2068,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
                 onFilterChange={handleFilterChange}
                 showRanking={showRanking}
                 onToggleRanking={() => setShowRanking((prev) => !prev)}
+                showRankingToggle={hasRequiredFilters}
                 loadingCampus={filtersLoading.campus}
                 loadingCurso={filtersLoading.curso}
               />
