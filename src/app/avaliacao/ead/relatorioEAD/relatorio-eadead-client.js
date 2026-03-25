@@ -869,7 +869,6 @@ export default function RelatorioEadClient({
 
   const ALL_POLOS_LABEL = 'Todos os Polos';
   const POLO_PLACEHOLDER = 'Selecione o polo desejado';
-  const CACHE_ENDPOINT = '/api/reports/ead/cache';
 
   const preferredAno =
     (initialSelected?.ano && String(initialSelected.ano)) ||
@@ -944,7 +943,6 @@ export default function RelatorioEadClient({
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('Preparando…');
 
-  const [cacheHitUrl, setCacheHitUrl] = useState('');
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfError, setPdfError] = useState('');
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
@@ -962,7 +960,7 @@ export default function RelatorioEadClient({
   const lastBuiltSigRef = useRef('');
 
   useEffect(() => {
-    const shouldBlockForAllPolos = yearDef.hasPolos && isAllPolos && !(cacheHitUrl || pdfUrl);
+    const shouldBlockForAllPolos = yearDef.hasPolos && isAllPolos && !pdfUrl;
     const shouldBlock = forceBlocking || shouldBlockForAllPolos;
 
     setBlocking(shouldBlock);
@@ -993,7 +991,7 @@ export default function RelatorioEadClient({
         setProgressText('Preparando…');
       }
     }
-  }, [forceBlocking, isAllPolos, yearDef.hasPolos, cacheHitUrl, pdfUrl]);
+  }, [forceBlocking, isAllPolos, yearDef.hasPolos, pdfUrl]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -1020,7 +1018,7 @@ export default function RelatorioEadClient({
 
   const progressTimerRef = useRef(null);
   useEffect(() => {
-    const hasResult = !!pdfUrl || !!cacheHitUrl;
+    const hasResult = !!pdfUrl;
     const isBlockedGenerating = blocking && !hasResult;
     if (!isBlockedGenerating) {
       if (progressTimerRef.current) {
@@ -1048,7 +1046,7 @@ export default function RelatorioEadClient({
         progressTimerRef.current = null;
       }
     };
-  }, [blocking, isAllPolos, pdfUrl, cacheHitUrl]);
+  }, [blocking, isAllPolos, pdfUrl]);
 
   const handleFilterChange = (e) => {
     const key = e?.target?.name;
@@ -1066,7 +1064,6 @@ export default function RelatorioEadClient({
     }
     setPdfUrl('');
     setPdfError('');
-    setCacheHitUrl('');
     setIsGeneratingPreview(false);
 
     if (key === 'polo') {
@@ -1171,42 +1168,12 @@ export default function RelatorioEadClient({
     return new Blob([merged], { type: 'application/pdf' });
   };
 
-  const fetchCachedUrl = async (ano, curso) => {
-    try {
-      const sp = new URLSearchParams({ ano: ano || '', curso: curso || '' });
-      const r = await fetch(`${CACHE_ENDPOINT}?${sp.toString()}`, { method: 'GET' });
-      if (r.ok) {
-        const j = await r.json();
-        return j?.url || null;
-      }
-    } catch {}
-    return null;
-  };
-
-  const saveToCache = async (blob, ano, curso) => {
-    try {
-      const fd = new FormData();
-      fd.append('ano', ano || '');
-      fd.append('curso', curso || '');
-      fd.append('file', new File([blob], 'todos-os-polos.pdf', { type: 'application/pdf' }));
-      const r = await fetch(CACHE_ENDPOINT, { method: 'POST', body: fd });
-      if (!r.ok) return null;
-      const j = await r.json();
-      return j?.url || null;
-    } catch {
-      return null;
-    }
-  };
-
-  const cacheDecisionRef = useRef({ sig: '', decided: false });
   const selSig = useMemo(() => {
     return `${selected.ano || ''}::${selected.curso || ''}::${yearDef.hasPolos && isAllPolos ? 'todos' : 'single'}`;
   }, [selected.ano, selected.curso, yearDef.hasPolos, isAllPolos]);
 
   useEffect(() => {
     latestSelSigRef.current = selSig;
-    cacheDecisionRef.current = { sig: selSig, decided: false };
-    setCacheHitUrl('');
     if (currentBuildSigRef.current !== selSig) {
       pendingBuildRef.current = false;
     }
@@ -1801,10 +1768,6 @@ export default function RelatorioEadClient({
         setPdfUrl(url);
         lastBuiltSigRef.current = requestSig;
 
-        if (yearDef.hasPolos && isAllPolos) {
-          saveToCache(finalBlob, selected.ano, selected.curso || '').catch(() => {});
-        }
-
         setProgressText('Concluído!');
         setProgress(100);
       } else {
@@ -1841,53 +1804,17 @@ export default function RelatorioEadClient({
     latestCanGenerateRef.current = canGenerate;
     latestIframeReadyRef.current = iframeReady;
 
-    async function decideCacheOnce() {
-      if (!canGenerate) {
-        if (prevUrlRef.current) {
-          URL.revokeObjectURL(prevUrlRef.current);
-          prevUrlRef.current = '';
-        }
-        setPdfUrl('');
-        setIsGeneratingPreview(false);
-        return;
+    if (!canGenerate) {
+      if (prevUrlRef.current) {
+        URL.revokeObjectURL(prevUrlRef.current);
+        prevUrlRef.current = '';
       }
-
-      const isTodos = yearDef.hasPolos && isAllPolos && !!selected.ano;
-
-      if (cacheDecisionRef.current.sig === selSig && cacheDecisionRef.current.decided) {
-        return;
-      }
-
-      cacheDecisionRef.current.sig = selSig;
-      cacheDecisionRef.current.decided = true;
-
-      if (isTodos) {
-        setProgress((p) => (p < 8 ? 8 : p));
-        setProgressText('Verificando cache…');
-
-        const cached = await fetchCachedUrl(selected.ano, selected.curso || '');
-        if (latestSelSigRef.current === selSig && cached) {
-          setCacheHitUrl(cached);
-          if (prevUrlRef.current) {
-            URL.revokeObjectURL(prevUrlRef.current);
-            prevUrlRef.current = '';
-          }
-          setPdfUrl(cached);
-          setIsGeneratingPreview(false);
-          setProgressText('Carregado do cache.');
-          setProgress(100);
-          setForceBlocking(false);
-          setBlocking(false);
-          return;
-        }
-
-        setProgressText('Cache não encontrado. Gerando…');
-        setProgress((p) => Math.max(p, 12));
-      }
+      setPdfUrl('');
+      setIsGeneratingPreview(false);
+      return;
     }
 
     function maybeBuild() {
-      if (cacheHitUrl) return;
       if (!(canGenerate && iframeReady)) return;
       if (buildingRef.current) return;
       if (lastBuiltSigRef.current === selSig && pdfUrl) return;
@@ -1896,13 +1823,12 @@ export default function RelatorioEadClient({
       return () => clearTimeout(t);
     }
 
-    decideCacheOnce();
     const cleanup = maybeBuild();
 
     return () => {
       if (typeof cleanup === 'function') cleanup();
     };
-  }, [canGenerate, iframeReady, selSig, cacheHitUrl, yearDef.hasPolos, isAllPolos, selected.ano, selected.curso]);
+  }, [canGenerate, iframeReady, selSig, yearDef.hasPolos, isAllPolos, selected.ano, selected.curso]);
 
   useEffect(() => {
     return () => {
