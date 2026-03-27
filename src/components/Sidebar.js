@@ -40,6 +40,8 @@ const Sidebar = () => {
 
   const selectedEvaluation = pathname.startsWith('/avaliacao/minhaopiniao')
     ? 'minhaopiniao'
+    : pathname.startsWith('/avaliacao/avaliacaoInLoco')
+    ? 'avaliacaoInLoco'
     : pathname.startsWith('/avaliacao/avalia') ||
       pathname.startsWith('/avaliacao/ead')
     ? 'avalia'
@@ -49,6 +51,7 @@ const Sidebar = () => {
     (featureFlags.presencialEnabled &&
       pathname.startsWith('/avaliacao/avalia/presencial')) ||
     pathname.startsWith('/avaliacao/ead') ||
+    pathname.startsWith('/avaliacao/avaliacaoInLoco') ||
     (pathname.startsWith('/avaliacao/minhaopiniao/') &&
       !pathname.startsWith('/avaliacao/minhaopiniao/relatorio'));
 
@@ -189,7 +192,7 @@ const Sidebar = () => {
                 <ul className={styles.subMenu}>
                   <li
                     className={
-                      pathname.startsWith('/avaliacao/avalia')
+                      (pathname.startsWith('/avaliacao/avalia/') || pathname === '/avaliacao/avalia')
                         ? styles.subMenuItemActive
                         : styles.subMenuItem
                     }
@@ -208,6 +211,16 @@ const Sidebar = () => {
                       <Link href="/avaliacao/minhaopiniao">Minha Opinião</Link>
                     </li>
                   )}
+
+                  <li
+                    className={
+                      pathname.startsWith('/avaliacao/avaliacaoInLoco')
+                        ? styles.subMenuItemActive
+                        : styles.subMenuItem
+                    }
+                  >
+                    <Link href="/avaliacao/avaliacaoInLoco">Avaliação In Loco</Link>
+                  </li>
                 </ul>
               )}
             </li>
@@ -265,6 +278,18 @@ const Sidebar = () => {
                           </Link>
                         </li>
                       </>
+                    ) : selectedEvaluation === 'avaliacaoInLoco' ? (
+                      <li
+                        className={
+                          pathname.startsWith('/avaliacao/avaliacaoInLoco/dados')
+                            ? styles.subMenuItemActive
+                            : styles.subMenuItem
+                        }
+                      >
+                        <Link href="/avaliacao/avaliacaoInLoco/dados">
+                          Dados
+                        </Link>
+                      </li>
                     ) : (
                       <>
                         {featureFlags.presencialEnabled && (

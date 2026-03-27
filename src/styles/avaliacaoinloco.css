@@ -1,0 +1,68 @@
+.inloco-page-container {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.inloco-info-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 28px;
+  line-height: 1.65;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+}
+
+.inloco-title {
+  font-size: 28px;
+  margin-bottom: 8px;
+  color: #0f172a;
+}
+
+.inloco-paragraph {
+  margin-bottom: 16px;
+  color: #334155;
+}
+
+.inloco-paragraph-last {
+  margin-bottom: 24px;
+}
+
+.inloco-list {
+  margin-bottom: 16px;
+  padding-left: 24px;
+  color: #334155;
+}
+
+.inloco-list-item {
+  margin-bottom: 8px;
+}
+
+.inloco-divider {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  margin: 20px 0 24px;
+}
+
+.inloco-ranking-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  padding: 0.35rem 0.2rem;
+}
+
+.inloco-chart-section {
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 28px;
+  margin-top: 20px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+}
+
+.inloco-status-message {
+  color: #64748b;
+  font-style: italic;
+}
+
+.inloco-chart-spacing {
+  margin-top: 32px;
+}

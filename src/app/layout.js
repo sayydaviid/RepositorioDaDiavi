@@ -1,6 +1,7 @@
 // src/app/layout.js
 import { Poppins, IBM_Plex_Sans } from 'next/font/google';
 import '../styles/globals.css';
+import '../styles/avaliacaoinloco.css';
 import Sidebar from '../components/Sidebar';
 import Footer from '../components/Footer';
 import { DataProvider } from '../app/avaliacao/minhaopiniao/context/DataContext'; 
