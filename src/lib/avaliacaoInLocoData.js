@@ -387,24 +387,35 @@ export function getAvaliacaoInLocoMediaDimensoes(params = {}) {
   };
 }
 
-export function getAvaliacaoInLocoEvolucaoAnual() {
-  try {
-    const workbook = loadAvaliacaoInLocoWorkbook();
-    const evolucaoSheet = findSheetByName(workbook, 'GRAFICO-EVOLUÇÃO');
-    const consolidatedData = buildConsolidatedEvolucaoFromSheet(evolucaoSheet);
+export function getAvaliacaoInLocoEvolucaoAnual(params = {}) {
+  const undAcad = normalizeFilterValue(params.undAcad);
+  const curso = normalizeFilterValue(params.curso);
+  const hasCustomFilter = Boolean(undAcad || curso);
 
-    if (consolidatedData) {
-      return consolidatedData;
+  if (!hasCustomFilter) {
+    try {
+      const workbook = loadAvaliacaoInLocoWorkbook();
+      const evolucaoSheet = findSheetByName(workbook, 'GRAFICO-EVOLUÇÃO');
+      const consolidatedData = buildConsolidatedEvolucaoFromSheet(evolucaoSheet);
+
+      if (consolidatedData) {
+        return consolidatedData;
+      }
+    } catch (error) {
+      console.error('Erro ao ler dados consolidados da aba GRAFICO-EVOLUÇÃO:', error);
     }
-  } catch (error) {
-    console.error('Erro ao ler dados consolidados da aba GRAFICO-EVOLUÇÃO:', error);
   }
 
   const { records } = getAvaliacaoInLocoData();
+  const filteredRecords = records.filter((row) => {
+    if (undAcad && row.undAcad !== undAcad) return false;
+    if (curso && row.curso !== curso) return false;
+    return true;
+  });
 
   const groupedByYear = new Map();
 
-  records.forEach((row) => {
+  filteredRecords.forEach((row) => {
     const year = String(row.ano || '').trim();
     if (!year) return;
 
@@ -433,7 +444,7 @@ export function getAvaliacaoInLocoEvolucaoAnual() {
   };
 
   const groupedRowsByYear = new Map();
-  records.forEach((row) => {
+  filteredRecords.forEach((row) => {
     const year = String(row.ano || '').trim();
     if (!year) return;
 

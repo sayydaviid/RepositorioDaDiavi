@@ -66,3 +66,13 @@
 .inloco-chart-spacing {
   margin-top: 32px;
 }
+
+.inloco-evolucao-filters-card {
+  margin-bottom: 0;
+}
+
+.inloco-evolucao-filters-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}

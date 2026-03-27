@@ -8,6 +8,7 @@ import GraficoEvolucaoLineChart from '../components/GraficoEvolucaoLineChart';
 import GraficoEvolucaoD123LineChart from '../components/GraficoEvolucaoD123LineChart';
 import QuantidadeCursosAvaliadosChart from '../components/QuantidadeCursosAvaliadosChart';
 import MediaDimensaoAnualChart from '../components/MediaDimensaoAnualChart';
+import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import styles from '../../../../styles/dados.module.css';
 
 function buildFiltersUrl(filters = {}) {
@@ -37,6 +38,18 @@ function buildMediaDimensoesUrl(filters = {}) {
   return query
     ? `/api/avaliacao-in-loco/media-dimensoes?${query}`
     : '/api/avaliacao-in-loco/media-dimensoes';
+}
+
+function buildGraficoEvolucaoUrl(filters = {}) {
+  const qs = new URLSearchParams();
+
+  if (filters.undAcad) qs.set('undAcad', filters.undAcad);
+  if (filters.curso) qs.set('curso', filters.curso);
+
+  const query = qs.toString();
+  return query
+    ? `/api/avaliacao-in-loco/grafico-evolucao?${query}`
+    : '/api/avaliacao-in-loco/grafico-evolucao';
 }
 
 export default function AvaliacaoInLocoDadosPage() {
@@ -79,6 +92,16 @@ export default function AvaliacaoInLocoDadosPage() {
     mediaDimensaoAnual: { anos: [], d1: [], d2: [], d3: [] },
   });
   const [loadingEvolucao, setLoadingEvolucao] = useState(false);
+  const [selectedEvolucaoFilters, setSelectedEvolucaoFilters] = useState({
+    undAcad: '',
+    curso: '',
+  });
+  const [evolucaoFilterOptions, setEvolucaoFilterOptions] = useState({
+    undAcad: [],
+    cursos: [],
+  });
+  const [loadingEvolucaoCursos, setLoadingEvolucaoCursos] = useState(false);
+  const [isEvolucaoFilterOpen, setIsEvolucaoFilterOpen] = useState(false);
 
   const allFiltersSelected =
     Boolean(selectedFilters.ano) &&
@@ -247,7 +270,7 @@ export default function AvaliacaoInLocoDadosPage() {
     const loadGraficoEvolucao = async () => {
       try {
         setLoadingEvolucao(true);
-        const response = await fetch('/api/avaliacao-in-loco/grafico-evolucao');
+        const response = await fetch(buildGraficoEvolucaoUrl(selectedEvolucaoFilters));
         const data = await response.json();
         setGraficoEvolucaoData({
           anos: data?.anos ?? [],
@@ -277,7 +300,54 @@ export default function AvaliacaoInLocoDadosPage() {
     };
 
     loadGraficoEvolucao();
+  }, [selectedEvolucaoFilters]);
+
+  useEffect(() => {
+    const loadEvolucaoUndAcad = async () => {
+      try {
+        const response = await fetch('/api/avaliacao-in-loco/filters');
+        const data = await response.json();
+        setEvolucaoFilterOptions((prev) => ({
+          ...prev,
+          undAcad: data?.undAcad ?? [],
+        }));
+      } catch (error) {
+        console.error('Erro ao carregar filtros da evolução:', error);
+      }
+    };
+
+    loadEvolucaoUndAcad();
   }, []);
+
+  useEffect(() => {
+    if (!selectedEvolucaoFilters.undAcad) {
+      setEvolucaoFilterOptions((prev) => ({
+        ...prev,
+        cursos: [],
+      }));
+      return;
+    }
+
+    const loadEvolucaoCursos = async () => {
+      try {
+        setLoadingEvolucaoCursos(true);
+        const response = await fetch(
+          buildFiltersUrl({ undAcad: selectedEvolucaoFilters.undAcad })
+        );
+        const data = await response.json();
+        setEvolucaoFilterOptions((prev) => ({
+          ...prev,
+          cursos: data?.cursos ?? [],
+        }));
+      } catch (error) {
+        console.error('Erro ao carregar cursos da evolução:', error);
+      } finally {
+        setLoadingEvolucaoCursos(false);
+      }
+    };
+
+    loadEvolucaoCursos();
+  }, [selectedEvolucaoFilters.undAcad]);
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -348,6 +418,25 @@ export default function AvaliacaoInLocoDadosPage() {
     }));
   };
 
+  const handleEvolucaoFilterChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name === 'undAcad') {
+      setSelectedEvolucaoFilters({
+        undAcad: value,
+        curso: '',
+      });
+      return;
+    }
+
+    if (name === 'curso') {
+      setSelectedEvolucaoFilters((prev) => ({
+        ...prev,
+        curso: value,
+      }));
+    }
+  };
+
   const labelOrTodos = (value, fallback) => (value && value !== 'todos' ? value : fallback);
 
   const mediaChartTitle = `Média das dimensões no ano ${labelOrTodos(
@@ -379,6 +468,58 @@ export default function AvaliacaoInLocoDadosPage() {
             loadingCampus={loadingCampus}
             loadingCurso={loadingCurso}
           />
+        )}
+
+        {activeSubmenu === 'grafico-evolucao' && (
+          <div className={styles.filtersWrapper}>
+            <button
+              type="button"
+              className={styles.filterToggleButton}
+              onClick={() => setIsEvolucaoFilterOpen((prev) => !prev)}
+            >
+              <Filter size={20} />
+              <span>Filtros</span>
+              {isEvolucaoFilterOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+
+            <div className={`${styles.filtersContent} ${isEvolucaoFilterOpen ? styles.open : ''}`}>
+              <select
+                name="undAcad"
+                value={selectedEvolucaoFilters.undAcad}
+                onChange={handleEvolucaoFilterChange}
+                className={styles.filterSelect}
+              >
+                <option value="">Todas as unidades acadêmicas</option>
+                {(evolucaoFilterOptions.undAcad ?? []).map((unidade, index) => (
+                  <option key={`evolucao-und-${unidade}-${index}`} value={unidade}>
+                    {unidade}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                name="curso"
+                value={selectedEvolucaoFilters.curso}
+                onChange={handleEvolucaoFilterChange}
+                disabled={!selectedEvolucaoFilters.undAcad || loadingEvolucaoCursos}
+                className={styles.filterSelect}
+              >
+                <option value="">
+                  {!selectedEvolucaoFilters.undAcad
+                    ? 'Todos os cursos'
+                    : loadingEvolucaoCursos
+                      ? 'Carregando cursos...'
+                      : 'Todos os cursos'}
+                </option>
+                {!loadingEvolucaoCursos &&
+                  (evolucaoFilterOptions.cursos ?? []).map((curso, index) => (
+                    <option key={`evolucao-curso-${curso}-${index}`} value={curso}>
+                      {curso}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
         )}
 
         <div className={styles.tabsContainer}>
@@ -415,34 +556,36 @@ export default function AvaliacaoInLocoDadosPage() {
           )}
 
           {activeSubmenu === 'grafico-evolucao' && (
-            <section className="inloco-chart-section">
-              {loadingEvolucao ? (
-                <p className="inloco-status-message">
-                  Carregando gráfico de evolução...
-                </p>
-              ) : !graficoEvolucaoData.anos?.length ? (
-                <p className="inloco-status-message">
-                  Não há dados para o gráfico de evolução.
-                </p>
-              ) : (
-                <>
-                  <GraficoEvolucaoLineChart data={graficoEvolucaoData} />
-                  <div className="inloco-chart-spacing">
-                    <GraficoEvolucaoD123LineChart data={graficoEvolucaoData} />
-                  </div>
-                  <div className="inloco-chart-spacing">
-                    <QuantidadeCursosAvaliadosChart
-                      data={graficoEvolucaoData?.quantidadeCursosAvaliados}
-                    />
-                  </div>
-                  <div className="inloco-chart-spacing">
-                    <MediaDimensaoAnualChart
-                      data={graficoEvolucaoData?.mediaDimensaoAnual}
-                    />
-                  </div>
-                </>
-              )}
-            </section>
+            <>
+              <section className="inloco-chart-section">
+                {loadingEvolucao ? (
+                  <p className="inloco-status-message">
+                    Carregando gráfico de evolução...
+                  </p>
+                ) : !graficoEvolucaoData.anos?.length ? (
+                  <p className="inloco-status-message">
+                    Não há dados para o gráfico de evolução.
+                  </p>
+                ) : (
+                  <>
+                    <GraficoEvolucaoLineChart data={graficoEvolucaoData} />
+                    <div className="inloco-chart-spacing">
+                      <GraficoEvolucaoD123LineChart data={graficoEvolucaoData} />
+                    </div>
+                    <div className="inloco-chart-spacing">
+                      <QuantidadeCursosAvaliadosChart
+                        data={graficoEvolucaoData?.quantidadeCursosAvaliados}
+                      />
+                    </div>
+                    <div className="inloco-chart-spacing">
+                      <MediaDimensaoAnualChart
+                        data={graficoEvolucaoData?.mediaDimensaoAnual}
+                      />
+                    </div>
+                  </>
+                )}
+              </section>
+            </>
           )}
         </div>
       </div>
