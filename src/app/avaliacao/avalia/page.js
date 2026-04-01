@@ -18,7 +18,7 @@ export default function AvaliarPage() {
         </h1>
 
         <p style={{ marginBottom: 16, color: '#334155' }}>
-          O presente instrumento foi elaborado pela <strong>Comissão Própria de Avaliação (CPA) da UFPA</strong>,
+          O presente instrumento foi elaborado pela <strong>Pró-Reitoria de Ensino de Graduação (PROEG) em parceria com a Comissão Própria de Avaliação (CPA) da UFPA</strong>,
           com o objetivo de conhecer a percepção dos <strong>discentes</strong> sobre seus cursos de graduação.
         </p>
 
@@ -30,7 +30,7 @@ export default function AvaliarPage() {
 
         <p style={{ marginBottom: 16, color: '#334155' }}>
           Os tópicos são apresentados na forma de afirmativas, para as quais deve ser atribuído um valor de <strong>1 a 4</strong>,
-          conforme a avaliação da realidade vivenciada. O valor <strong>5</strong> deve ser utilizado apenas quando a
+          conforme a avaliação da realidade vivenciada. O valor <strong>5</strong>, exclusivamente para cursos a distância (EAD), deve ser utilizado apenas quando a
           afirmativa <em>não se aplica</em> à disciplina/módulo/tema.
         </p>
 
@@ -56,7 +56,7 @@ export default function AvaliarPage() {
           <li><strong>Valor 2</strong> = Regular</li>
           <li><strong>Valor 3</strong> = Bom/Boa</li>
           <li><strong>Valor 4</strong> = Excelente</li>
-          <li><strong>Valor 5</strong> = Não se aplica</li>
+          <li><strong>Valor 5</strong> = Não se aplica (Apenas EAD) </li>
         </ul>
 
         <div
