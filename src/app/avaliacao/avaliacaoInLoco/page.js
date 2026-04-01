@@ -6,42 +6,49 @@ export default function AvaliacaoInLocoPage() {
     <div className={`${styles.mainContent} inloco-page-container`}>
       <section className="inloco-info-card">
         <h1 className="inloco-title">
-          Avaliação In Loco dos Cursos de Graduação da UFPA
+          Lorem Ipsum Dolor Sit Amet
         </h1>
 
         <p className="inloco-paragraph">
-          A <strong>Avaliação In Loco</strong> é um processo essencial para conhecer a realidade dos cursos de graduação da UFPA.
-          Esta avaliação é conduzida pela <strong>Comissão Própria de Avaliação (CPA)</strong> com o objetivo de verificar
-          in loco as condições infraestruturais, os processos acadêmicos e a qualidade do ensino oferecido.
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+          Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+          Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
         </p>
 
         <p className="inloco-paragraph">
-          Durante as visitas in loco, são realizadas entrevistas com <strong>gestores</strong>, <strong>docentes</strong>,
-          <strong> discentes</strong> e <strong>técnicos administrativos</strong>, permitindo uma avaliação completa e contextualizada
-          das atividades desenvolvidas nos cursos.
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+          Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+          Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
         </p>
 
         <p className="inloco-paragraph">
-          Os aspectos avaliados incluem:
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit.
         </p>
 
         <ul className="inloco-list">
-          <li className="inloco-list-item">Infraestrutura física e tecnológica</li>
-          <li className="inloco-list-item">Qualificação e atuação do corpo docente</li>
-          <li className="inloco-list-item">Condições oferecidas aos discentes</li>
-          <li className="inloco-list-item">Processos de gestão e organização acadêmica</li>
-          <li className="inloco-list-item">Recursos humanos técnicos e administrativos</li>
-          <li className="inloco-list-item">Políticas de apoio ao estudante</li>
+          <li className="inloco-list-item">Lorem ipsum dolor sit amet</li>
+          <li className="inloco-list-item">Consectetur adipiscing elit</li>
+          <li className="inloco-list-item">Sed do eiusmod tempor</li>
+          <li className="inloco-list-item">Incididunt ut labore et dolore</li>
+          <li className="inloco-list-item">Magna aliqua ut enim</li>
+          <li className="inloco-list-item">Ad minim veniam quis nostrud</li>
         </ul>
 
         <p className="inloco-paragraph">
-          Os resultados da avaliação in loco contribuem para a melhoria contínua da qualidade dos cursos, subsidiam
-          o processo de autorização e renovação de reconhecimento, e orientam o planejamento estratégico da instituição.
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+          Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+          Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
         </p>
 
         <p className="inloco-paragraph inloco-paragraph-last">
-          A participação colaborativa de todos os envolvidos no processo educativo é fundamental para o sucesso
-          desta avaliação e para a excelência institucional da UFPA.
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+          Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+        </p>
+
+        <p className="inloco-paragraph">
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. 
+          Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure 
+          dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
         </p>
 
         <hr className="inloco-divider" />
