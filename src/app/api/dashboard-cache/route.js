@@ -159,6 +159,14 @@ function uniqueSortedNormalizedStrings(values = []) {
   );
 }
 
+function toInitialUpperRestLower(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+
+  const lowered = text.toLocaleLowerCase('pt-BR');
+  return lowered.charAt(0).toLocaleUpperCase('pt-BR') + lowered.slice(1);
+}
+
 function toLowerDisplayList(values = []) {
   return (Array.isArray(values) ? values : [])
     .map((value) => String(value ?? '').trim())
@@ -168,7 +176,9 @@ function toLowerDisplayList(values = []) {
 
 function toCampusFiltersPayload(rawData) {
   const anos = uniqueSortedStrings(rawData?.anos);
-  const campus = toLowerDisplayList(uniqueSortedNormalizedStrings(rawData?.campus));
+  const campus = uniqueSortedNormalizedStrings(rawData?.campus).map(
+    toInitialUpperRestLower
+  );
   return { anos, campus };
 }
 

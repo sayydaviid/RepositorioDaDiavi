@@ -53,6 +53,14 @@ function normalizeFilterValue(value, fallback = 'todos') {
   return s;
 }
 
+function normalizeCampusLabel(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  if (!text || text.toLowerCase() === 'todos') return text;
+  const lowered = text.toLocaleLowerCase('pt-BR');
+  return lowered.charAt(0).toLocaleUpperCase('pt-BR') + lowered.slice(1);
+}
+
 function coerceRows(apiData) {
   if (Array.isArray(apiData)) return apiData;
   if (!apiData || typeof apiData !== 'object') return [];
@@ -676,7 +684,7 @@ export default function RelatorioPresencialClient({
 
   const [selected, setSelected] = useState({
     ano: initialSelected?.ano || '',
-    campus: initialSelected?.campus || '',
+    campus: normalizeCampusLabel(initialSelected?.campus || ''),
     curso: initialSelected?.curso || '',
   });
 
@@ -1083,7 +1091,7 @@ export default function RelatorioPresencialClient({
     const loadCampus = async () => {
       try {
         const res = await fetch(
-          make('/filters', { ano: selected.ano }),
+          make('/filters/campus', { ano: selected.ano }),
           { signal: controller.signal, cache: 'no-store' }
         );
         if (!res.ok) throw new Error('Falha ao carregar campi');
