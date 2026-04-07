@@ -113,6 +113,7 @@ function lerpColorHex(a, b, t) {
 
 export default React.memo(function BoxplotChart({ apiData, title, customOptions }) {
   const wrapperRef = useRef(null);
+  const chartHeight = 'clamp(320px, 45vh, 520px)';
 
   if (!apiData || !apiData.boxplot_data) {
     return (
@@ -573,14 +574,14 @@ export default React.memo(function BoxplotChart({ apiData, title, customOptions 
         className="boxplot-chart-wrapper"
         style={{
           width: '100%',
-          height: '350px',
+          height: chartHeight,
           touchAction: 'none',
         }}
         onWheelCapture={(e) => {
           e.preventDefault();
         }}
       >
-        <Chart options={options} series={series} type="boxPlot" height={350} />
+        <Chart options={options} series={series} type="boxPlot" height="100%" />
       </div>
 
       <style jsx global>{`

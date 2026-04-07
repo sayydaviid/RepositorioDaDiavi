@@ -807,6 +807,15 @@ export default function EadDashboardClient({
     disciplina: 'todos'
   });
 
+  const [isWideViewport, setIsWideViewport] = useState(false);
+
+  useEffect(() => {
+    const updateViewport = () => setIsWideViewport(window.innerWidth >= 1200);
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  }, []);
+
   const searchParams = useSearchParams();
   const embedForPdf = searchParams.get('embedForPdf') === '1';
 
@@ -1071,28 +1080,45 @@ export default function EadDashboardClient({
       }
     : undefined;
 
-  const gridDimensoes = {
-    display: 'grid',
-    gridTemplateColumns: '1.8fr 1fr',
-    gridAutoRows: 'minmax(360px, auto)',
-    gap: '16px',
-    alignItems: 'stretch'
-  };
+  const useDesktopLikeLayout = embedForPdf || isWideViewport;
 
-  const leftBig = { gridColumn: '1 / 2', gridRow: '1 / span 2', height: 780 };
-  const rightTop = { gridColumn: '2 / 3', gridRow: '1', height: 360 };
-  const rightBottom = { gridColumn: '2 / 3', gridRow: '2', height: 420 };
+  const gridDimensoes = useDesktopLikeLayout
+    ? {
+        display: 'grid',
+        gridTemplateColumns: '1.8fr 1fr',
+        gridAutoRows: 'minmax(360px, auto)',
+        gap: '16px',
+        alignItems: 'stretch'
+      }
+    : {
+        display: 'grid',
+        gridTemplateColumns: '1fr',
+        gridAutoRows: 'minmax(320px, auto)',
+        gap: '12px',
+        alignItems: 'stretch'
+      };
+
+  const leftBig = useDesktopLikeLayout
+    ? { gridColumn: '1 / 2', gridRow: '1 / span 2', height: 780 }
+    : { gridColumn: '1 / -1', gridRow: 'auto', height: 'clamp(320px, 48vh, 680px)' };
+
+  const rightTop = useDesktopLikeLayout
+    ? { gridColumn: '2 / 3', gridRow: '1', height: 360 }
+    : { gridColumn: '1 / -1', gridRow: 'auto', height: 'clamp(300px, 40vh, 420px)' };
+
+  const rightBottom = useDesktopLikeLayout
+    ? { gridColumn: '2 / 3', gridRow: '2', height: 420 }
+    : { gridColumn: '1 / -1', gridRow: 'auto', height: 'clamp(320px, 44vh, 500px)' };
 
   const gridThreeRows = {
     display: 'grid',
     gridTemplateColumns: '1fr',
-    gridTemplateRows: '360px 380px 360px',
     gap: '12px'
   };
 
-  const row1 = { gridColumn: '1 / -1', gridRow: '1', height: 360 };
-  const row2 = { gridColumn: '1 / -1', gridRow: '2', height: 380 };
-  const row3 = { gridColumn: '1 / -1', gridRow: '3', height: 360 };
+  const row1 = { gridColumn: '1 / -1', gridRow: 'auto', height: 'clamp(320px, 42vh, 420px)' };
+  const row2 = { gridColumn: '1 / -1', gridRow: 'auto', height: 'clamp(340px, 44vh, 440px)' };
+  const row3 = { gridColumn: '1 / -1', gridRow: 'auto', height: 'clamp(320px, 42vh, 420px)' };
 
   const StatsTableInline = ({ id, title, rows, labelHeader = 'Item' }) => {
     if (!rows || !rows.length || !embedForPdf) return null;

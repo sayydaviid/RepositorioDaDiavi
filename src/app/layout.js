@@ -20,10 +20,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="pt-BR"><body className={`${poppins.variable} ${ibmPlexSans.variable}`}>
         <DataProvider>
-          <div style={{ display: 'flex' }}>
+          <div className="appShell">
             <Sidebar />
-            <main style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-              <div style={{ flex: 1 }}>{children}</div>
+            <main className="appMain appMainWithFixedSidebar">
+              <div className="appMainContent">{children}</div>
               <Footer />
             </main>
           </div>

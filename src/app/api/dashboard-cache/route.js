@@ -7,7 +7,13 @@ import {
 const HF_BASE = 'https://sayydaviid-avalia-backend.hf.space';
 
 // endpoints que NÃO devem usar neon cache
-const SKIP_CACHE_ENDPOINTS = new Set(['/filters', '/health', '/']);
+const SKIP_CACHE_ENDPOINTS = new Set([
+  '/filters',
+  '/filters/campus',
+  '/filters/cursos',
+  '/health',
+  '/',
+]);
 
 // deduplicação de requests em memória
 const inflightRequests = new Map();
@@ -102,14 +108,72 @@ function uniqueSortedStrings(values = []) {
     .filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
+function normalizeTextKey(value) {
+  return String(value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
+function pickPreferredLabel(currentLabel, nextLabel) {
+  if (!currentLabel) return nextLabel;
+
+  const score = (label) => {
+    const text = String(label ?? '').trim();
+    if (!text) return -1;
+
+    let points = 0;
+    if (text !== text.toUpperCase()) points += 2;
+    if (/[À-ÿ]/.test(text)) points += 1;
+    points += Math.min(text.length, 200) / 1000;
+    return points;
+  };
+
+  const currentScore = score(currentLabel);
+  const nextScore = score(nextLabel);
+
+  if (nextScore > currentScore) return nextLabel;
+  if (nextScore < currentScore) return currentLabel;
+
+  return nextLabel.localeCompare(currentLabel, 'pt-BR', { sensitivity: 'base' }) < 0
+    ? nextLabel
+    : currentLabel;
+}
+
+function uniqueSortedNormalizedStrings(values = []) {
+  const grouped = new Map();
+
+  for (const item of Array.isArray(values) ? values : []) {
+    const raw = String(item ?? '').trim();
+    if (!raw) continue;
+
+    const key = normalizeTextKey(raw);
+    if (!key) continue;
+
+    grouped.set(key, pickPreferredLabel(grouped.get(key), raw));
+  }
+
+  return [...grouped.values()].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })
+  );
+}
+
+function toLowerDisplayList(values = []) {
+  return (Array.isArray(values) ? values : [])
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .map((value) => value.toLocaleLowerCase('pt-BR'));
+}
+
 function toCampusFiltersPayload(rawData) {
   const anos = uniqueSortedStrings(rawData?.anos);
-  const campus = uniqueSortedStrings(rawData?.campus);
+  const campus = toLowerDisplayList(uniqueSortedNormalizedStrings(rawData?.campus));
   return { anos, campus };
 }
 
 function toCourseFiltersPayload(rawData) {
-  const cursos = uniqueSortedStrings(rawData?.cursos);
+  const cursos = toLowerDisplayList(uniqueSortedNormalizedStrings(rawData?.cursos));
   return { cursos };
 }
 

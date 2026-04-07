@@ -20,7 +20,8 @@ const ActivityChart = ({
   customOptions = {},
   height = 420,          // << controle de altura do card
   legendWidth = 160,     // << largura fixa da coluna da legenda
-  showLegend = true
+  showLegend = true,
+  legendPosition = 'side'
 }) => {
   const isPercentual = title.includes('Proporções') || title.includes('Atividades');
 
@@ -31,6 +32,10 @@ const ActivityChart = ({
     plugins: {
       legend: { display: false }, // usamos legenda customizada ao lado
       datalabels: {
+        display: (ctx) => {
+          if (isPercentual) return true;
+          return ctx.datasetIndex === 0;
+        },
         anchor: 'end',
         align: 'end',
         formatter: (value) => Math.round(value * 100) / 100,
@@ -79,7 +84,8 @@ const ActivityChart = ({
         className={styles.chartCanvasWrapper}
         style={{
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'stretch',
+          flexWrap: 'wrap',
           gap: 12,
           height
         }}
@@ -94,8 +100,21 @@ const ActivityChart = ({
           <div
             className={styles.customLegend}
             style={{
-              flex: `0 0 ${legendWidth}px`,
-              alignSelf: 'flex-start'
+              ...(legendPosition === 'overlayTopRight'
+                ? {
+                    position: 'absolute',
+                    top: -6,
+                    right: 8,
+                    zIndex: 4,
+                    alignSelf: 'flex-start'
+                  }
+                : {
+                    position: 'static',
+                    flex: `1 1 ${legendWidth}px`,
+                    minWidth: 140,
+                    maxWidth: 260,
+                    alignSelf: 'flex-start'
+                  })
             }}
           >
             {chartData.datasets.map((dataset) => (

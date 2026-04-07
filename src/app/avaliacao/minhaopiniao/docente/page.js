@@ -50,7 +50,7 @@ function parseCSV(text) {
     else if (char === ',' && !insideQuote) {
       currentRow.push(currentVal.trim());
       currentVal = '';
-    } 
+          <div style={{ width: 'min(350px, 100%)', textAlign: 'center', padding: '2rem' }}>
     else if (char === '\n' && !insideQuote) {
       currentRow.push(currentVal.trim());
       if (currentRow.length > 0) rows.push(currentRow);
@@ -113,7 +113,7 @@ function LoadingOverlay({ progress }) {
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       backdropFilter: 'blur(10px)'
     }}>
-      <div style={{ width: '350px', textAlign: 'center', padding: '2rem' }}>
+      <div style={{ width: 'min(350px, 100%)', textAlign: 'center', padding: '2rem' }}>
         <Loader2 style={{ width: '48px', height: '48px', color: '#FF8E29', marginBottom: '1.5rem', animation: 'spin 1s linear infinite' }} />
         <h2 style={{ fontSize: '1.5rem', color: '#1a1a1a', marginBottom: '0.5rem', fontWeight: '700' }}>Carregando Docentes</h2>
         <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1rem' }}>Sincronizando dados e filtrando inconsistências...</p>

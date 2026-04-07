@@ -1,6 +1,6 @@
 /* src/app/components/Sidebar.module.css */
 .sidebar {
-  width: 260px; /* Um pouco mais largo para conforto */
+  width: var(--sidebar-width);
   height: 100vh;
   padding: 25px;
   background-color: var(--surface-color);
@@ -9,8 +9,62 @@
   border-right: 1px solid var(--border-color);
   box-shadow: 0px 0px 4px var(--shadow-color);
   border-radius: 0 20px 20px 0; /* Apenas na direita para um visual moderno */
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 1200px) {
+  .sidebar {
+    padding: 18px;
+  }
+
+  .nav a,
+  .menuHeader,
+  .parentMenu span {
+    padding: 10px 12px;
+    font-size: 15px;
+  }
+
+  .subMenuItem a,
+  .subMenuItemActive a {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    left: auto;
+    top: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    overflow-y: visible;
+    padding: 14px 16px;
+  }
+
+  .logoContainer {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    padding: 8px 0;
+    margin-bottom: 10px;
+  }
+
+  .nav a,
+  .menuHeader,
+  .parentMenu span {
+    font-size: 15px;
+    padding: 10px 12px;
+  }
+
+  .subMenu {
+    padding-left: 12px;
+  }
 }
 
 .logoContainer {

@@ -1062,7 +1062,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
             { value: '3', label: 'Dimensão 3' },
             { value: '4', label: 'Dimensão 4' },
           ],
-          anos: data?.anos ?? prev.anos ?? [],
+          anos: prev?.anos ?? filtersOptions?.anos ?? [],
           campus: data?.campus ?? [],
           cursos: [],
         }));
@@ -1085,7 +1085,7 @@ export default function DiscenteDashboardClient({ initialData, filtersOptions })
     loadCampus();
 
     return () => controller.abort();
-  }, [selectedFilters.ano]);
+  }, [selectedFilters.ano, filtersOptions?.anos]);
 
   useEffect(() => {
     if (!selectedFilters.ano || !selectedFilters.campus) {

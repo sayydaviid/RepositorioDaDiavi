@@ -16,6 +16,7 @@
 
   --font-body: 'Poppins', sans-serif;
   --font-heading: 'IBM Plex Sans', sans-serif;
+  --sidebar-width: 260px;
 }
 
 /* 2. Reset básico e aplicação do fundo e da fonte principal */
@@ -29,6 +30,54 @@ body {
   background-color: var(--bg-color);
   color: var(--text-dark);
   font-family: var(--font-body);
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.appShell {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.appMain {
+  flex: 1;
+  min-width: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(16px, 2.5vw, 40px);
+}
+
+.appMainWithFixedSidebar {
+  margin-left: var(--sidebar-width);
+  width: calc(100% - var(--sidebar-width));
+}
+
+.appMainContent {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .appShell {
+    flex-direction: column;
+  }
+
+  .appMain {
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .appMainWithFixedSidebar {
+    margin-left: 0;
+    width: 100%;
+  }
 }
 
 a {

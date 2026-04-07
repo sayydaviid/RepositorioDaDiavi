@@ -3,7 +3,7 @@ import styles from '../../../styles/dados.module.css';
 
 export default function AvaliarPage() {
   return (
-    <div className={styles.mainContent} style={{ maxWidth: 980, margin: '0 auto' }}>
+    <div className={styles.mainContent}>
       <section
         style={{
           background: '#fff',

@@ -133,7 +133,7 @@ export default function AutoavaliacaoTab({
                 Estatísticas descritivas – Ação Docente (por Subdimensão)
               </h4>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <div style={{ width: '100%', maxWidth: 1100 }}>
+                <div style={{ width: '100%' }}>
                   {renderDescritivasTable(acaoDocSubBoxDisc)}
                 </div>
               </div>
@@ -206,7 +206,7 @@ export default function AutoavaliacaoTab({
                 Estatísticas descritivas – Autoavaliação Discente (por item)
               </h4>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <div style={{ width: '100%', maxWidth: 1100 }}>
+                <div style={{ width: '100%' }}>
                   {renderDescritivasTable(itensAutoBox)}
                 </div>
               </div>
@@ -285,7 +285,7 @@ export default function AutoavaliacaoTab({
                 Estatísticas descritivas – Atitude Profissional (Discente)
               </h4>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <div style={{ width: '100%', maxWidth: 1100 }}>
+                <div style={{ width: '100%' }}>
                   {renderDescritivasTable(itensAtitudeBoxDisc)}
                 </div>
               </div>
@@ -350,7 +350,7 @@ export default function AutoavaliacaoTab({
                 Estatísticas descritivas – Gestão Didática (Discente)
               </h4>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <div style={{ width: '100%', maxWidth: 1100 }}>
+                <div style={{ width: '100%' }}>
                   {renderDescritivasTable(itensGestaoBoxDisc)}
                 </div>
               </div>
@@ -415,7 +415,7 @@ export default function AutoavaliacaoTab({
                 Estatísticas descritivas – Processo Avaliativo (Discente)
               </h4>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <div style={{ width: '100%', maxWidth: 1100 }}>
+                <div style={{ width: '100%' }}>
                   {renderDescritivasTable(procDiscBox)}
                 </div>
               </div>

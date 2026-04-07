@@ -16,32 +16,16 @@ export default function DimensoesGeraisTab({
     <div
       style={{
         position: 'relative',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
         gap: '1rem',
         overflow: 'visible',
       }}
     >
-      {/* ADICIONADO id="chart-medias-dimensoes" PARA O PDF ENCONTRAR O GRÁFICO */}
-      <div id="chart-medias-dimensoes" className={styles.chartContainer}>
-        <ActivityChart
-          chartData={datasets.discMedias}
-          title="Médias por dimensão (Discente)"
-          customOptions={{
-            ...disableZoomOptions,
-            plugins: {
-              legend: { display: false },
-              tooltip: twoDecTooltip(),
-            },
-          }}
-        />
-      </div>
-
-      <div className={styles.chartContainer}>
-        {dashboardData.docDimMedias ? (
+      <div className={styles.singleGrid}>
+        {/* Linha 1: Médias */}
+        <div id="chart-medias-dimensoes" className={styles.chartContainer}>
           <ActivityChart
-            chartData={datasets.docMedias}
-            title="Médias por dimensão (Docente)"
+            chartData={datasets.discMedias}
+            title="Médias por dimensão (Discente)"
             customOptions={{
               ...disableZoomOptions,
               plugins: {
@@ -50,36 +34,54 @@ export default function DimensoesGeraisTab({
               },
             }}
           />
-        ) : (
-          <p>Dados de médias por dimensão (Docente) não disponíveis.</p>
-        )}
-      </div>
+        </div>
 
-      {/* ADICIONADO id="chart-dimensoes" PARA O PDF ENCONTRAR O GRÁFICO */}
-      <div id="chart-dimensoes" className={styles.chartContainer}>
-        <ActivityChart
-          chartData={datasets.discProporcoes}
-          title="Proporções de respostas dadas por Dimensão (Discente)"
-          customOptions={{
-            ...disableZoomOptions,
-            plugins: { tooltip: twoDecTooltip('%') },
-          }}
-        />
-      </div>
+        <div className={styles.chartContainer}>
+          {dashboardData.docDimMedias ? (
+            <ActivityChart
+              chartData={datasets.docMedias}
+              title="Médias por dimensão (Docente)"
+              customOptions={{
+                ...disableZoomOptions,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: twoDecTooltip(),
+                },
+              }}
+            />
+          ) : (
+            <p>Dados de médias por dimensão (Docente) não disponíveis.</p>
+          )}
+        </div>
 
-      <div className={styles.chartContainer}>
-        {dashboardData.docDimProporcoes ? (
+        {/* Linha 2: Proporções */}
+        <div id="chart-dimensoes" className={styles.chartContainer}>
           <ActivityChart
-            chartData={datasets.docProporcoes}
-            title="Proporções de respostas dadas por Dimensão (Docente)"
+            chartData={datasets.discProporcoes}
+            title="Proporções de respostas dadas por Dimensão (Discente)"
+            legendPosition="overlayTopRight"
             customOptions={{
               ...disableZoomOptions,
               plugins: { tooltip: twoDecTooltip('%') },
             }}
           />
-        ) : (
-          <p>Dados de proporções por dimensão (Docente) não disponíveis.</p>
-        )}
+        </div>
+
+        <div className={styles.chartContainer}>
+          {dashboardData.docDimProporcoes ? (
+            <ActivityChart
+              chartData={datasets.docProporcoes}
+              title="Proporções de respostas dadas por Dimensão (Docente)"
+              legendPosition="overlayTopRight"
+              customOptions={{
+                ...disableZoomOptions,
+                plugins: { tooltip: twoDecTooltip('%') },
+              }}
+            />
+          ) : (
+            <p>Dados de proporções por dimensão (Docente) não disponíveis.</p>
+          )}
+        </div>
       </div>
 
       {/* ADICIONADO id="chart-boxplot-dimensoes" PARA O PDF ENCONTRAR O GRÁFICO */}
@@ -116,7 +118,7 @@ export default function DimensoesGeraisTab({
         </h3>
 
         <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <div style={{ width: '100%', maxWidth: 1100 }}>
+          <div style={{ width: '100%' }}>
             {renderDescritivasTable(dashboardData.turmaDimDescritivas)}
           </div>
         </div>

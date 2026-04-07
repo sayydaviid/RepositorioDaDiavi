@@ -1,5 +1,12 @@
 /* src/app/dados/dados.module.css */
 
+.container,
+.mainContent {
+  width: 100%;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
 /* =========================
    HEADER
 ========================= */
@@ -104,6 +111,8 @@
 .chartContainer {
   position: relative;
   height: 400px;
+  width: 100%;
+  min-width: 0;
 }
 
 /* Wrapper flex p/ título + canvas */
@@ -117,6 +126,7 @@
 .chartCanvasWrapper {
   position: relative;
   flex-grow: 1;
+  min-width: 0;
 }
 
 /* =========================
@@ -326,6 +336,28 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  .chartContainer {
+    height: 320px;
+  }
+
+  .chartCard,
+  .chartContainerCard,
+  .chartContainerFlex {
+    padding: 16px;
+  }
+
+  .tabsContainer {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .tab,
+  .activeTab {
+    flex: 0 0 auto;
+  }
 }
 
 /* =========================
