@@ -50,7 +50,7 @@ function parseCSV(text) {
     else if (char === ',' && !insideQuote) {
       currentRow.push(currentVal.trim());
       currentVal = '';
-          <div style={{ width: 'min(350px, 100%)', textAlign: 'center', padding: '2rem' }}>
+    }
     else if (char === '\n' && !insideQuote) {
       currentRow.push(currentVal.trim());
       if (currentRow.length > 0) rows.push(currentRow);
